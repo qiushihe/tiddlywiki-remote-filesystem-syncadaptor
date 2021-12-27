@@ -56,17 +56,17 @@ class RemoteFileSystemAdaptor {
     this.name = "remote-filesystem";
 
     // Enable lazy loading.
-    // This prevents previous loaded full tiddlers to be loaded again.
-    // This does not prevent the skinny tiddlers list to be loaded multiple times.
+    // This prevents previous loaded full tiddlers to be loaded again. This does not prevent the
+    // skinny tiddlers list to be loaded multiple times.
     this.supportsLazyLoading = true;
 
     // Hook into the "saving tiddler" hook to manipulate revision value.
     // The way the `syncer` module works is by listening to the `change` event on the `$tw.wiki`
-    // object. This means that by the time the `syncer` module (and in turn this module) gets to
-    // do anything, the core `$tw.wiki` has already "saved" the tiddler (and we're just syncing
-    // those changes to a remote place).
-    // So here we intercept the hook, advance the revision value for the tiddler and store the
-    // new revision value in a "pending" index.
+    // object. This means that by the time the `syncer` module (and in turn this module) gets to do
+    // anything, the core `$tw.wiki` has already "saved" the tiddler (and we're just syncing those
+    // changes to a remote place).
+    // So here we intercept the hook, advance the revision value for the tiddler and store the new
+    // revision value in a "pending" index.
     // In `saveTiddler` below, if the saving operation is successful, we'll apply the pending
     // revision value to the non-pending revision index.
     $tw.hooks.addHook("th-saving-tiddler", (tiddler) => {
@@ -197,8 +197,8 @@ class RemoteFileSystemAdaptor {
 
     adaptorInfo.__rfsBucket = adaptorInfo.__rfsBucket || tiddler.__rfsBucket;
 
-    // Assuming the saving operation is successful, here we apply the "pending" revision value
-    // to the non-pending revision index, ...
+    // Assuming the saving operation is successful, here we apply the "pending" revision value to
+    // the non-pending revision index, ...
     DUMMY_TIDDLER_REVISIONS[tiddler.fields.title] =
       DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
     // ... and clear the pending value from the pending index.
@@ -216,27 +216,27 @@ class RemoteFileSystemAdaptor {
 
 // export const adaptorClass = RemoteFileSystemAdaptor;
 
-// We have to not export this module at all if we can detect that it's the `tiddlywiki` Node.js
-// CLI that's running the code.
+// We have to not export this module at all if we can detect that it's the `tiddlywiki` Node.js CLI
+// that's running the code.
 //
 // The reason for only conditionally exporting this module is because, due to the _unique_ way
-// Tiddlywiki's `syncer` module is implemented, if the syncadaptor modeil (i.e.) this module
-// itself includes either `getUpdatedTiddlers` or `getSkinnyTiddlers` functions, then the
-// `syncer` module will initiate a long-pulling based queue runner system.
+// Tiddlywiki's `syncer` module is implemented, if the syncadaptor modeil (i.e.) this module itself
+// includes either `getUpdatedTiddlers` or `getSkinnyTiddlers` functions, then the `syncer` module
+// will initiate a long-pulling based queue runner system.
 //
-// While this system is essential for the function of the wiki, it also can not be disabled for
-// the CLI. Which means, if the entire purpose of running the `tiddlywiki --build` command is
-// to generate a ready-to-use HTML file, then this long-pulling based queue runner system will
-// block the CLI process and prevent it from existing.
+// While this system is essential for the function of the wiki, it also can not be disabled for the
+// CLI. Which means, if the entire purpose of running the `tiddlywiki --build` command is to
+// generate a ready-to-use HTML file, then this long-pulling based queue runner system will block
+// the CLI process and prevent it from existing.
 //
-// Although it is TOTALL FINE to use CTL-C to kill the process in this case, it's also not a
-// very clean solution:
+// Although it is TOTALL FINE to use CTL-C to kill the process in this case, it's also not a very
+// clean solution:
 //
 // * There should be a way to tell `tiddlywiki --build` to just build the HTML without running
 //   anything at all
 //
-// * But there isn't a way to do that, so the best we can do is to just not export this module
-//   if we can detect that it's not running in a browder
+// * But there isn't a way to do that, so the best we can do is to just not export this module if
+//   we can detect that it's not running in a browder
 if ($tw.browser) {
   // @ts-ignore
   exports.adaptorClass = RemoteFileSystemAdaptor;

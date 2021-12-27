@@ -1,0 +1,7 @@
+version: "2.1"
+services:
+  tw-rfs-tiddlywiki-server:
+    build: "./docker/tiddlywiki"
+    volumes:
+      - ./build:/tiddlywiki-remote-filesystem-syncadaptor
+      - ./wiki:/tiddlywiki-html

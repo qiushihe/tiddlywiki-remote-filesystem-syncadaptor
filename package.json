@@ -5,10 +5,14 @@
   "main": "src/index.tsx",
   "scripts": {
     "lint": "eslint --fix --ext .js --ext .ts ./src ./types ./babel",
-    "build": "npm-run-all build:pre build:compile build:post",
+    "build": "npm-run-all build:pre build:compile build:post build:docker build:wiki",
     "build:pre": "shx rm -fr build",
     "build:compile": "babel src --copy-files --extensions \".js,.ts\" --out-dir build",
-    "build:post": "shx rm -fr build/*.d.js"
+    "build:post": "shx rm -fr build/*.d.js",
+    "build:docker": "npm-run-all build:docker:clean build:docker:build",
+    "build:docker:clean": "docker-compose down",
+    "build:docker:build": "docker-compose build",
+    "build:wiki": "docker-compose up"
   },
   "repository": {
     "type": "git",
