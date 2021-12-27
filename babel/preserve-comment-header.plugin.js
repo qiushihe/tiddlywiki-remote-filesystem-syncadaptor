@@ -26,7 +26,7 @@ module.exports = function preserveCommentHeader(api) {
           path.node.innerComments.push(firstComment);
           path.node.body[0].leadingComments.shift();
         }
-      },
-    },
+      }
+    }
   };
 };

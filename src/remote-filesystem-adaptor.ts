@@ -11,7 +11,7 @@ import { Wiki, Logger } from "../types/tiddlywiki";
 
 const DUMMY_TIDDLERS = [
   {
-    __rfsBucket: "dummy-bucket",
+    __rfsNamespace: "dummy-namespace",
     created: new Date(),
     creator: "dummy-creator",
     modified: new Date(),
@@ -20,10 +20,10 @@ const DUMMY_TIDDLERS = [
     title: "test test test",
     text: "test test test text yo!",
     tags: [],
-    list: [],
+    list: []
   },
   {
-    __rfsBucket: "dummy-bucket",
+    __rfsNamespace: "dummy-namespace",
     created: new Date(),
     creator: "dummy-creator",
     modified: new Date(),
@@ -32,13 +32,13 @@ const DUMMY_TIDDLERS = [
     title: "dummy dummy dummy",
     text: "dummy dummy dummy text yo!",
     tags: [],
-    list: [],
-  },
+    list: []
+  }
 ];
 
 const DUMMY_TIDDLER_REVISIONS = {
   "test test test": uuidv4(),
-  "dummy dummy dummy": uuidv4(),
+  "dummy dummy dummy": uuidv4()
 };
 
 const DUMMY_TIDDLER_PENDING_REVISIONS = {};
@@ -73,7 +73,7 @@ class RemoteFileSystemAdaptor {
       DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title] = uuidv4();
 
       return Object.assign({}, tiddler.fields, {
-        revision: DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title],
+        revision: DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title]
       });
     });
   }
@@ -132,7 +132,7 @@ class RemoteFileSystemAdaptor {
       DUMMY_TIDDLERS.map(function (tiddler) {
         return Object.assign({}, tiddler, {
           text: undefined,
-          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title],
+          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
         });
       })
     );
@@ -141,17 +141,17 @@ class RemoteFileSystemAdaptor {
   // Extract the metadata relevant to this specific sync adapter.
   // These metadata are sometimes referred to as `adaptorInfo`.
   getTiddlerInfo(tiddler) {
-    const bucket = tiddler.fields.__rfsBucket;
-    if (bucket) {
+    const namespace = tiddler.fields.__rfsNamespace;
+    if (namespace) {
       this.logger.log(
         "Got tiddler info",
         tiddler.fields.title,
-        "bucket:",
-        bucket
+        "namespace:",
+        namespace
       );
 
       return {
-        __rfsBucket: bucket,
+        __rfsNamespace: namespace
       };
     } else {
       return {};
@@ -175,7 +175,7 @@ class RemoteFileSystemAdaptor {
       callback(
         null,
         Object.assign({}, tiddler, {
-          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title],
+          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
         })
       );
     } else {
@@ -195,7 +195,8 @@ class RemoteFileSystemAdaptor {
     const tiddlerInfo = options.tiddlerInfo || {};
     const adaptorInfo = tiddlerInfo.adaptorInfo || {};
 
-    adaptorInfo.__rfsBucket = adaptorInfo.__rfsBucket || tiddler.__rfsBucket;
+    adaptorInfo.__rfsNamespace =
+      adaptorInfo.__rfsNamespace || tiddler.__rfsNamespace;
 
     // Assuming the saving operation is successful, here we apply the "pending" revision value to
     // the non-pending revision index, ...
