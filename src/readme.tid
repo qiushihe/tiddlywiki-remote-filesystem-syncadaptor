@@ -1,0 +1,3 @@
+title: $:/plugins/qiushihe/remote-filesystem/readme
+
+The remote filesystem plugin is used to synchronise tiddler changes to a remote file system.

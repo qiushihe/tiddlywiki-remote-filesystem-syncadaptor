@@ -1,0 +1,9 @@
+{
+  "title": "$:/plugins/qiushihe/remote-filesystem",
+  "name": "Remote Filesystem",
+  "description": "Synchronize changes to a remote filesystem",
+  "version": "0.0.1",
+  "core-version": ">=5.0.8",
+  "plugin-type": "plugin",
+  "list": "readme"
+}
