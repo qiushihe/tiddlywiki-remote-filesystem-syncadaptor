@@ -5,14 +5,17 @@
   "main": "src/index.tsx",
   "scripts": {
     "lint": "eslint --fix --ext .js --ext .ts ./src ./types ./babel",
-    "build": "npm-run-all build:pre build:compile build:post build:docker build:wiki",
-    "build:pre": "shx rm -fr build",
-    "build:compile": "babel src --copy-files --extensions \".js,.ts\" --out-dir build",
-    "build:post": "shx rm -fr build/*.d.js",
-    "build:docker": "npm-run-all build:docker:clean build:docker:build",
-    "build:docker:clean": "docker-compose down",
-    "build:docker:build": "docker-compose build",
-    "build:wiki": "docker-compose up"
+    "lib": "npm-run-all lib:clean lib:build lib:build:clean",
+    "lib:clean": "shx rm -fr build",
+    "lib:build": "babel src --copy-files --extensions \".js,.ts\" --out-dir build",
+    "lib:build:clean": "shx rm -fr build/*.d.js",
+    "wiki": "npm-run-all lib wiki:clean wiki:setup wiki:build",
+    "wiki:clean": "docker-compose -f ./docker-compose.build.yml down",
+    "wiki:setup": "docker-compose -f ./docker-compose.build.yml build",
+    "wiki:build": "docker-compose -f ./docker-compose.build.yml up",
+    "minio": "npm-run-all minio:clean minio:run",
+    "minio:clean": "docker-compose -f ./docker-compose.minio.yml down",
+    "minio:run": "docker-compose -f ./docker-compose.minio.yml up"
   },
   "repository": {
     "type": "git",
