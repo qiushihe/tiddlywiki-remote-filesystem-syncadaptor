@@ -19,6 +19,37 @@ export const getCanonicalRequest = (
   headers: [string, string][],
   payload: string
 ): Promise<string> => {
+  if (
+    !["GET", "PUT", "PATCH", "POST", "DELETE"].includes(method.toUpperCase())
+  ) {
+    throw new Error(
+      "Canonical request method must be one of: GET, PUT, PATCH, POST or DELETE."
+    );
+  }
+
+  if (!uri.match(/^\//)) {
+    throw new Error("Canonical request uri must not include URL origin.");
+  }
+
+  if (
+    !headers.find(([name]) => name.toLowerCase() === "x-amz-content-sha256")
+  ) {
+    throw new Error(
+      "Canonical request must include x-amz-content-sha256 header."
+    );
+  }
+
+  const xAmzDate = headers.find(
+    ([name]) => name.toLowerCase() === "x-amz-date"
+  );
+  if (xAmzDate) {
+    if (!`${xAmzDate[1] || ""}`.match(/^\d\d\d\d\d\d\d\dT\d\d\d\d\d\dZ$/)) {
+      throw new Error(
+        "Canonical request requires x-amz-dat header to be in the format of `yyyymmddThhmmssZ`."
+      );
+    }
+  }
+
   const queryParameters = query.map(([name, value]) => {
     return [encodeURIComponent(name), encodeURIComponent(value)].join("=");
   });
@@ -45,7 +76,7 @@ export const getCanonicalRequest = (
 
   return getSha256Hash(payload).then((hashedPayload) => {
     return [
-      method,
+      method.toUpperCase(),
       uri,
       queryString,
       headerString,
