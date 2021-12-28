@@ -288,6 +288,24 @@ describe("getSigningKey", () => {
       expect(getArrayBufferHexString(signingKey)).toEqual(EXPECTED_SIGNING_KEY);
     });
   });
+
+  it("should validate date format", () => {
+    try {
+      return getSigningKey(
+        FIXTURE_SECRET_KEY,
+        FIXTURE_LONG_DATE_STRING,
+        FIXTURE_REGION,
+        FIXTURE_SERVICE
+      ).then(() => {
+        throw new Error("should have invalidated invalid date format");
+      });
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toEqual(
+        "Signing key requires date to be in the format of `yyyymmdd`."
+      );
+    }
+  });
 });
 
 describe("getAuthorizationHeaderValue", () => {
@@ -304,5 +322,31 @@ describe("getAuthorizationHeaderValue", () => {
     expect(headerValue).toEqual(
       "AWS4-HMAC-SHA256 Credential=aCcEsSkEy/23710604/us-lala-0/lol-serv/aws4_request,SignedHeaders=apple;banana;cumin,Signature=sig"
     );
+  });
+
+  it("should validate date format", () => {
+    let failed = false;
+
+    try {
+      getAuthorizationHeaderValue(
+        "aCcEsSkEy",
+        FIXTURE_LONG_DATE_STRING,
+        "us-lala-0",
+        "lol-serv",
+        ["banana", "apple", "cumin"],
+        "sig"
+      );
+
+      failed = true;
+    } catch (err) {
+      expect(err).toBeInstanceOf(Error);
+      expect((err as Error).message).toEqual(
+        "Authorization header value requires date to be in the format of `yyyymmdd`."
+      );
+    }
+
+    if (failed) {
+      throw new Error("should have invalidated invalid date format");
+    }
   });
 });

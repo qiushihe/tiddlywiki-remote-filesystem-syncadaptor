@@ -103,6 +103,12 @@ export const getSigningKey = (
   region: string,
   service: string
 ): Promise<ArrayBuffer> => {
+  if (!`${date || ""}`.match(/^\d\d\d\d\d\d\d\d$/)) {
+    throw new Error(
+      "Signing key requires date to be in the format of `yyyymmdd`."
+    );
+  }
+
   const enc = new TextEncoder();
 
   return getHmacSha256Signature(
@@ -131,6 +137,12 @@ export const getAuthorizationHeaderValue = (
   signedHeaders: string[],
   signature: string
 ): string => {
+  if (!`${date || ""}`.match(/^\d\d\d\d\d\d\d\d$/)) {
+    throw new Error(
+      "Authorization header value requires date to be in the format of `yyyymmdd`."
+    );
+  }
+
   signedHeaders.sort();
 
   return `AWS4-HMAC-SHA256 ${[
