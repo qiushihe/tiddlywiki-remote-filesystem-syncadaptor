@@ -97,8 +97,10 @@ class RemoteFileSystemAdaptor {
   // This function returns status information for this module
   getStatus(callback) {
     if (callback) {
-      // error, is logged in, username, is readonly, is anonymous
-      callback(null, true, "test-username", true, false);
+      setTimeout(() => {
+        // error, is logged in, username, is readonly, is anonymous
+        callback(null, true, "test-username", true, false);
+      }, 1000);
     }
   }
 
@@ -127,6 +129,7 @@ class RemoteFileSystemAdaptor {
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   getSkinnyTiddlers(callback) {
+    console.log("!!! getSkinnyTiddlers");
     callback(
       null,
       DUMMY_TIDDLERS.map(function (tiddler) {
@@ -141,6 +144,7 @@ class RemoteFileSystemAdaptor {
   // Extract the metadata relevant to this specific sync adapter.
   // These metadata are sometimes referred to as `adaptorInfo`.
   getTiddlerInfo(tiddler) {
+    console.log("!!! getTiddlerInfo", tiddler);
     const namespace = tiddler.fields.__rfsNamespace;
     if (namespace) {
       this.logger.log(
@@ -165,23 +169,29 @@ class RemoteFileSystemAdaptor {
   }
 
   loadTiddler(title, callback) {
+    console.log("!!! loadTiddler", title);
+
     const tiddler = DUMMY_TIDDLERS.find(function (tiddler) {
       return tiddler.title === title;
     });
 
     if (tiddler) {
-      this.logger.log("Loaded tiddler:", title);
+      setTimeout(() => {
+        this.logger.log("Loaded tiddler:", title);
 
-      callback(
-        null,
-        Object.assign({}, tiddler, {
-          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
-        })
-      );
+        callback(
+          null,
+          Object.assign({}, tiddler, {
+            revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
+          })
+        );
+      }, 1000);
     } else {
-      this.logger.log("Error loading tiddler:", title);
+      setTimeout(() => {
+        this.logger.log("Error loading tiddler:", title);
 
-      callback(new Error("Error loading tiddler: " + title), null);
+        callback(new Error("Error loading tiddler: " + title), null);
+      }, 1000);
     }
   }
 

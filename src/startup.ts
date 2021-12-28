@@ -17,7 +17,13 @@ export const synchronous = true;
 
 type WikiChangeEvent = Record<string, Record<"deleted" | "modified", boolean>>;
 
-export const startup = () => {
+const disableAlwaysFetchSkinnyTiddlers = () => {
+  // This only work with vendored version of `syncer.js` ... or after this PR is merged upstream:
+  // https://github.com/Jermolene/TiddlyWiki5/pull/6372
+  $tw.syncer.alwaysFetchAllSkinnyTiddlers = false;
+};
+
+const setupConnectionStringPersistence = () => {
   const storedConnectionString = localStorage.getItem(
     AWS_S3_CONNECTION_STRING_STORAGE_KEY
   );
@@ -39,4 +45,9 @@ export const startup = () => {
       }
     });
   });
+};
+
+export const startup = () => {
+  disableAlwaysFetchSkinnyTiddlers();
+  setupConnectionStringPersistence();
 };

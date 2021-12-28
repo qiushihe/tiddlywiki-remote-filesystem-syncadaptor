@@ -22,3 +22,7 @@ export type Wiki = {
     listener: (...args: unknown[]) => void
   ) => void;
 };
+
+export type Syncer = {
+  alwaysFetchAllSkinnyTiddlers: boolean;
+};
