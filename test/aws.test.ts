@@ -40,41 +40,41 @@ describe("getCanonicalRequest", () => {
   });
 
   it("should validate method value", () => {
-    try {
-      return getCanonicalRequest(
-        "LALA",
-        "/test.txt",
-        [],
-        [["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH]],
-        ""
-      ).then(() => {
+    return getCanonicalRequest(
+      "LALA",
+      "/test.txt",
+      [],
+      [["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH]],
+      ""
+    )
+      .then(() => {
         throw new Error("should have invalidated invalid method value");
+      })
+      .catch((err) => {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toEqual(
+          "Canonical request method must be one of: GET, PUT, PATCH, POST or DELETE."
+        );
       });
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toEqual(
-        "Canonical request method must be one of: GET, PUT, PATCH, POST or DELETE."
-      );
-    }
   });
 
   it("should validate uri value", () => {
-    try {
-      return getCanonicalRequest(
-        "GET",
-        "http://lala.com/test.txt",
-        [],
-        [["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH]],
-        ""
-      ).then(() => {
+    return getCanonicalRequest(
+      "GET",
+      "http://lala.com/test.txt",
+      [],
+      [["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH]],
+      ""
+    )
+      .then(() => {
         throw new Error("should have invalidated invalid uri value");
+      })
+      .catch((err) => {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toEqual(
+          "Canonical request uri must not include URL origin."
+        );
       });
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toEqual(
-        "Canonical request uri must not include URL origin."
-      );
-    }
   });
 
   it("should sort query parameters by name in ascending order", () => {
@@ -179,40 +179,40 @@ describe("getCanonicalRequest", () => {
   });
 
   it("should require x-amz-content-sha256 header", () => {
-    try {
-      return getCanonicalRequest("GET", "/test.txt", [], [], "").then(() => {
+    return getCanonicalRequest("GET", "/test.txt", [], [], "")
+      .then(() => {
         throw new Error("should have required x-amz-content-sha256 header");
+      })
+      .catch((err) => {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toEqual(
+          "Canonical request must include x-amz-content-sha256 header."
+        );
       });
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toEqual(
-        "Canonical request must include x-amz-content-sha256 header."
-      );
-    }
   });
 
   it("should validate x-amz-date header value format", () => {
-    try {
-      return getCanonicalRequest(
-        "GET",
-        "/test.txt",
-        [],
-        [
-          ["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH],
-          ["x-amz-date", "23710604"]
-        ],
-        ""
-      ).then(() => {
+    return getCanonicalRequest(
+      "GET",
+      "/test.txt",
+      [],
+      [
+        ["x-amz-content-sha256", FIXTURE_EMPTY_STRING_HASH],
+        ["x-amz-date", "23710604"]
+      ],
+      ""
+    )
+      .then(() => {
         throw new Error(
           "should have invalidated invalid x-amz-date header value format"
         );
+      })
+      .catch((err) => {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toEqual(
+          "Canonical request requires x-amz-dat header to be in the format of `yyyymmddThhmmssZ`."
+        );
       });
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toEqual(
-        "Canonical request requires x-amz-dat header to be in the format of `yyyymmddThhmmssZ`."
-      );
-    }
   });
 
   it("should include an empty line after header values", () => {
@@ -290,21 +290,21 @@ describe("getSigningKey", () => {
   });
 
   it("should validate date format", () => {
-    try {
-      return getSigningKey(
-        FIXTURE_SECRET_KEY,
-        FIXTURE_LONG_DATE_STRING,
-        FIXTURE_REGION,
-        FIXTURE_SERVICE
-      ).then(() => {
+    return getSigningKey(
+      FIXTURE_SECRET_KEY,
+      FIXTURE_LONG_DATE_STRING,
+      FIXTURE_REGION,
+      FIXTURE_SERVICE
+    )
+      .then(() => {
         throw new Error("should have invalidated invalid date format");
+      })
+      .catch((err) => {
+        expect(err).toBeInstanceOf(Error);
+        expect((err as Error).message).toEqual(
+          "Signing key requires date to be in the format of `yyyymmdd`."
+        );
       });
-    } catch (err) {
-      expect(err).toBeInstanceOf(Error);
-      expect((err as Error).message).toEqual(
-        "Signing key requires date to be in the format of `yyyymmdd`."
-      );
-    }
   });
 });
 

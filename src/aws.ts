@@ -12,7 +12,7 @@ import {
   getSha256Hash
 } from "$:/plugins/qiushihe/remote-filesystem/hmac.js";
 
-export const getCanonicalRequest = (
+export const getCanonicalRequest = async (
   method: string,
   uri: string,
   query: [string, string][],
@@ -72,16 +72,16 @@ export const getCanonicalRequest = (
 
   const headerNamesString = headerNames.join(";");
 
-  return getSha256Hash(payload).then((hashedPayload) => {
-    return [
-      method.toUpperCase(),
-      uri,
-      queryString,
-      headerString,
-      headerNamesString,
-      getArrayBufferHexString(hashedPayload)
-    ].join("\n");
-  });
+  const hashedPayload = await getSha256Hash(payload);
+
+  return [
+    method.toUpperCase(),
+    uri,
+    queryString,
+    headerString,
+    headerNamesString,
+    getArrayBufferHexString(hashedPayload)
+  ].join("\n");
 };
 
 export const getStringToSign = (
@@ -95,7 +95,7 @@ export const getStringToSign = (
   );
 };
 
-export const getSigningKey = (
+export const getSigningKey = async (
   secretKey: string,
   date: string,
   region: string,
@@ -109,22 +109,25 @@ export const getSigningKey = (
 
   const enc = new TextEncoder();
 
-  return getHmacSha256Signature(
+  const dateKey = await getHmacSha256Signature(
     enc.encode("AWS4" + secretKey),
     enc.encode(date)
-  )
-    .then((dateKey) => {
-      return getHmacSha256Signature(dateKey, enc.encode(region));
-    })
-    .then((dateRegionKey) => {
-      return getHmacSha256Signature(dateRegionKey, enc.encode(service));
-    })
-    .then((dateRegionServiceKey) => {
-      return getHmacSha256Signature(
-        dateRegionServiceKey,
-        enc.encode("aws4_request")
-      );
-    });
+  );
+
+  const dateRegionKey = await getHmacSha256Signature(
+    dateKey,
+    enc.encode(region)
+  );
+
+  const dateRegionServiceKey = await getHmacSha256Signature(
+    dateRegionKey,
+    enc.encode(service)
+  );
+
+  return getHmacSha256Signature(
+    dateRegionServiceKey,
+    enc.encode("aws4_request")
+  );
 };
 
 export const getAuthorizationHeaderValue = (

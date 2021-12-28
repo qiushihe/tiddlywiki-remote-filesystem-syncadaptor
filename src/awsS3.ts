@@ -40,7 +40,7 @@ const getDateShortString = (date: Date) => {
   ].join("");
 };
 
-export const s3Fetch = (
+export const s3Fetch = async (
   accessKey: string,
   secretKey: string,
   region: string,
@@ -58,58 +58,72 @@ export const s3Fetch = (
 
   const host = `${bucket}.s3.${region}.amazonaws.com`;
 
-  return getSha256Hash(payload || "").then((payloadHash) => {
-    const headers: [string, string][] = [
-      ["host", host],
-      ["x-amz-date", nowLongString],
-      ["x-amz-content-sha256", getArrayBufferHexString(payloadHash)]
-    ];
+  const payloadHash = await getSha256Hash(payload || "");
 
-    return getCanonicalRequest(method, uri, query, headers, payload || "")
-      .then((canonicalRequest) => getSha256Hash(canonicalRequest))
-      .then((requestStringDigest) => {
-        const stringToSign = getStringToSign(
-          "AWS4-HMAC-SHA256",
-          nowLongString,
-          `${nowShortString}/${region}/s3/aws4_request`,
-          getArrayBufferHexString(requestStringDigest)
-        );
+  const headers: [string, string][] = [
+    ["host", host],
+    ["x-amz-date", nowLongString],
+    ["x-amz-content-sha256", getArrayBufferHexString(payloadHash)]
+  ];
 
-        return getSigningKey(secretKey, nowShortString, region, "s3").then(
-          (signingKey) =>
-            getHmacSha256Signature(signingKey, encoder.encode(stringToSign))
-        );
-      })
-      .then((signature) => {
-        const authHeaderValue = getAuthorizationHeaderValue(
-          accessKey,
-          nowShortString,
-          region,
-          "s3",
-          headers.map(([name]) => name),
-          getArrayBufferHexString(signature)
-        );
+  const canonicalRequest = await getCanonicalRequest(
+    method,
+    uri,
+    query,
+    headers,
+    payload || ""
+  );
 
-        const fetchQuery = query
-          .map(
-            ([name, value]) =>
-              `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
-          )
-          .join("&");
+  const requestStringDigest = await getSha256Hash(canonicalRequest);
 
-        const fetchHeaders = headers.reduce((acc, [name, value]) => {
-          acc[name] = value;
-          return acc;
-        }, {});
+  const stringToSign = getStringToSign(
+    "AWS4-HMAC-SHA256",
+    nowLongString,
+    `${nowShortString}/${region}/s3/aws4_request`,
+    getArrayBufferHexString(requestStringDigest)
+  );
 
-        fetchHeaders["Authorization"] = authHeaderValue;
+  const signingKey = await getSigningKey(
+    secretKey,
+    nowShortString,
+    region,
+    "s3"
+  );
 
-        return fetch(`https://${host}${uri}?${fetchQuery}`, {
-          method: method,
-          mode: "cors",
-          headers: fetchHeaders,
-          body: payload ? JSON.stringify(payload) : null
-        }).then((res) => res.text());
-      });
+  const signature = await getHmacSha256Signature(
+    signingKey,
+    encoder.encode(stringToSign)
+  );
+
+  const authHeaderValue = getAuthorizationHeaderValue(
+    accessKey,
+    nowShortString,
+    region,
+    "s3",
+    headers.map(([name]) => name),
+    getArrayBufferHexString(signature)
+  );
+
+  const fetchQuery = query
+    .map(
+      ([name, value]) =>
+        `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
+    )
+    .join("&");
+
+  const fetchHeaders = headers.reduce((acc, [name, value]) => {
+    acc[name] = value;
+    return acc;
+  }, {});
+
+  fetchHeaders["Authorization"] = authHeaderValue;
+
+  const response = await fetch(`https://${host}${uri}?${fetchQuery}`, {
+    method: method,
+    mode: "cors",
+    headers: fetchHeaders,
+    body: payload ? JSON.stringify(payload) : null
   });
+
+  return response.text();
 };
