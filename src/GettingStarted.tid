@@ -1,0 +1,42 @@
+title: GettingStarted
+
+\define lingo-base() $:/language/ControlPanel/Basics/
+
+Welcome to ~TiddlyWiki and the ~TiddlyWiki community!
+
+!! Setup Remote Filesystem
+
+This particular instance of ~TiddlyWiki is equipped with the [[Remote Filesystem|$:/plugins/qiushihe/remote-filesystem]] plugin, which allows the wiki to store tiddlers on services such as AWS S3.
+
+Before //anything// on this wiki can be saved, it's important to ''complete setup for the Remote Filesystem plugin first''.
+
+!!! Connection String
+
+In order for the Remote Filesystem plugin to authenticate with AWS S3, enter the [[connection string|$:/config/plugins/qiushihe/remote-filesystem/connection-string]] including authentication information:
+
+<$edit-text
+  tiddler="$:/config/plugins/qiushihe/remote-filesystem/connection-string"
+  tag="input"
+  type="password"
+  default=""
+  placeholder="aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com"
+  class="rfs-full-width-field rfs-monospace-field"
+/>
+
+The connection string should be in the format of:
+
+`aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com`
+
+!! Set Up This ~TiddlyWiki
+
+<div class="tc-control-panel">
+
+|<$link to="$:/SiteTitle"><<lingo Title/Prompt>></$link> |<$edit-text tiddler="$:/SiteTitle" default="" tag="input"/> |
+|<$link to="$:/SiteSubtitle"><<lingo Subtitle/Prompt>></$link> |<$edit-text tiddler="$:/SiteSubtitle" default="" tag="input"/> |
+|<$link to="$:/DefaultTiddlers"><<lingo DefaultTiddlers/Prompt>></$link> |<<lingo DefaultTiddlers/TopHint>><br> <$edit tag="textarea" tiddler="$:/DefaultTiddlers"/><br>//<<lingo DefaultTiddlers/BottomHint>>// |
+
+</div>
+
+!! Other Options
+
+See the [[control panel|$:/ControlPanel]] for more options.

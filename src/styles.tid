@@ -1,0 +1,10 @@
+title: $:/plugins/qiushihe/remote-filesystem/styles
+tags: $:/tags/Stylesheet
+
+input.rfs-full-width-field {
+	width: 100%;
+}
+
+input.rfs-monospace-field {
+  font-family: "SFMono-Regular",Consolas,"Liberation Mono",Menlo,Courier,monospace;
+}
