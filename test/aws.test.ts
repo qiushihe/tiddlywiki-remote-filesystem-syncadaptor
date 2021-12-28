@@ -4,7 +4,8 @@ import { getSha256Hash } from "../src/hmac";
 import {
   getCanonicalRequest,
   getStringToSign,
-  getSigningKey
+  getSigningKey,
+  getAuthorizationHeaderValue
 } from "../src/aws";
 
 import { FIXTURE_EMPTY_STRING_HASH } from "./fixture/hmac.fixture";
@@ -286,5 +287,22 @@ describe("getSigningKey", () => {
     ).then((signingKey) => {
       expect(getArrayBufferHexString(signingKey)).toEqual(EXPECTED_SIGNING_KEY);
     });
+  });
+});
+
+describe("getAuthorizationHeaderValue", () => {
+  it("should generate expected authorization header value", () => {
+    const headerValue = getAuthorizationHeaderValue(
+      "aCcEsSkEy",
+      "23710604",
+      "us-lala-0",
+      "lol-serv",
+      ["banana", "apple", "cumin"],
+      "sig"
+    );
+
+    expect(headerValue).toEqual(
+      "AWS4-HMAC-SHA256 Credential=aCcEsSkEy/23710604/us-lala-0/lol-serv/aws4_request,SignedHeaders=apple;banana;cumin,Signature=sig"
+    );
   });
 });

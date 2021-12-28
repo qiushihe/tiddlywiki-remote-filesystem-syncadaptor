@@ -122,3 +122,20 @@ export const getSigningKey = (
       );
     });
 };
+
+export const getAuthorizationHeaderValue = (
+  accessKey: string,
+  date: string,
+  region: string,
+  service: string,
+  signedHeaders: string[],
+  signature: string
+): string => {
+  signedHeaders.sort();
+
+  return `AWS4-HMAC-SHA256 ${[
+    `Credential=${accessKey}/${date}/${region}/${service}/aws4_request`,
+    `SignedHeaders=${signedHeaders.join(";")}`,
+    `Signature=${signature}`
+  ].join(",")}`;
+};
