@@ -5,12 +5,12 @@ module-type: library
 Remote filesystem aws utility functions
 \*/
 
-import { getArrayBufferHexString } from "$:/plugins/qiushihe/remote-filesystem/buffer";
+import { getArrayBufferHexString } from "$:/plugins/qiushihe/remote-filesystem/buffer.js";
 
 import {
   getHmacSha256Signature,
   getSha256Hash
-} from "$:/plugins/qiushihe/remote-filesystem/hmac";
+} from "$:/plugins/qiushihe/remote-filesystem/hmac.js";
 
 export const getCanonicalRequest = (
   method: string,
@@ -19,9 +19,7 @@ export const getCanonicalRequest = (
   headers: [string, string][],
   payload: string
 ): Promise<string> => {
-  if (
-    !["GET", "PUT", "PATCH", "POST", "DELETE"].includes(method.toUpperCase())
-  ) {
+  if (!["GET", "PUT", "POST", "DELETE"].includes(method.toUpperCase())) {
     throw new Error(
       "Canonical request method must be one of: GET, PUT, PATCH, POST or DELETE."
     );
