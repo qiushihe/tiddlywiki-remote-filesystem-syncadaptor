@@ -137,7 +137,7 @@ The syncer tracks changes to the store and synchronises them to a remote data st
     // Handle loading of skinny tiddlers on demand.
     $tw.hooks.addHook("th-navigating", (evt) => {
       const tiddler = $tw.wiki.getTiddler(evt.navigateTo);
-      if (tiddler.fields._is_skinny || tiddler.fields.text === undefined) {
+      if (tiddler && (tiddler.fields._is_skinny || tiddler.fields.text === undefined)) {
         $tw.wiki.dispatchEvent("lazyLoad", tiddler.fields.title);
       }
       return evt;
