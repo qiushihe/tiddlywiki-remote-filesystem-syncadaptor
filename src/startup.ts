@@ -7,7 +7,7 @@ Remote filesystem startup function
 
 import {
   AWS_S3_CONNECTION_STRING_STORAGE_KEY,
-  AWS_S3_CONNECTION_STRING_TIDDLER_TITLE
+  AWS_S3_CONNECTION_STRING_FIELD_ID
 } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 export const name = "remote-filesystem";
@@ -15,35 +15,46 @@ export const platforms = ["browser"];
 export const after = ["startup"];
 export const synchronous = true;
 
-type WikiChangeEvent = Record<string, Record<"deleted" | "modified", boolean>>;
-
 const disableAlwaysFetchSkinnyTiddlers = () => {
   // This only work with vendored version of `syncer.js` ... or after this PR is merged upstream:
   // https://github.com/Jermolene/TiddlyWiki5/pull/6372
   $tw.syncer.alwaysFetchAllSkinnyTiddlers = false;
 };
 
+const handleConnectionStringInputUpdate = (evt: Event) => {
+  localStorage.setItem(
+    AWS_S3_CONNECTION_STRING_STORAGE_KEY,
+    (evt.target as HTMLInputElement).value
+  );
+};
+
 const setupConnectionStringPersistence = () => {
-  const storedConnectionString = localStorage.getItem(
-    AWS_S3_CONNECTION_STRING_STORAGE_KEY
-  );
+  const observer = new MutationObserver((mutationRecords) => {
+    const storedConnectionString = localStorage.getItem(
+      AWS_S3_CONNECTION_STRING_STORAGE_KEY
+    );
 
-  $tw.wiki.addTiddler(
-    new $tw.Tiddler({
-      title: AWS_S3_CONNECTION_STRING_TIDDLER_TITLE,
-      text: storedConnectionString
-    })
-  );
-
-  $tw.wiki.addEventListener("change", (evt: WikiChangeEvent) => {
-    Object.keys(evt).forEach((title) => {
-      if (title === AWS_S3_CONNECTION_STRING_TIDDLER_TITLE) {
-        localStorage.setItem(
-          AWS_S3_CONNECTION_STRING_STORAGE_KEY,
-          $tw.wiki.getTiddlerText(title)
+    mutationRecords
+      .map((mutationRecord) => {
+        return mutationRecord.target.parentElement.querySelector(
+          `.${AWS_S3_CONNECTION_STRING_FIELD_ID}`
         );
-      }
-    });
+      })
+      .filter((input) => !!input)
+      .filter((value, index, arr) => arr.indexOf(value) === index)
+      .forEach((input: HTMLInputElement) => {
+        input.value = storedConnectionString;
+
+        input.removeEventListener("keyup", handleConnectionStringInputUpdate);
+        input.removeEventListener("change", handleConnectionStringInputUpdate);
+        input.addEventListener("keyup", handleConnectionStringInputUpdate);
+        input.addEventListener("change", handleConnectionStringInputUpdate);
+      });
+  });
+
+  observer.observe(document.querySelector(".tc-body"), {
+    childList: true,
+    subtree: true
   });
 };
 
