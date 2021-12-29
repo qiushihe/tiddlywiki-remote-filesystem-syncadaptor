@@ -1,6 +1,11 @@
 title: $:/plugins/qiushihe/remote-filesystem/styles
 tags: $:/tags/Stylesheet
 
+input.rfs-field {
+  background-color: inherit;
+  color: inherit;
+}
+
 input.rfs-full-width-field {
 	width: 100%;
 }

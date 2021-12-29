@@ -129,7 +129,6 @@ class RemoteFileSystemAdaptor {
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   getSkinnyTiddlers(callback) {
-    console.log("!!! getSkinnyTiddlers");
     callback(
       null,
       DUMMY_TIDDLERS.map(function (tiddler) {
@@ -144,7 +143,6 @@ class RemoteFileSystemAdaptor {
   // Extract the metadata relevant to this specific sync adapter.
   // These metadata are sometimes referred to as `adaptorInfo`.
   getTiddlerInfo(tiddler) {
-    console.log("!!! getTiddlerInfo", tiddler);
     const namespace = tiddler.fields.__rfsNamespace;
     if (namespace) {
       this.logger.log(
@@ -169,8 +167,6 @@ class RemoteFileSystemAdaptor {
   }
 
   loadTiddler(title, callback) {
-    console.log("!!! loadTiddler", title);
-
     const tiddler = DUMMY_TIDDLERS.find(function (tiddler) {
       return tiddler.title === title;
     });
