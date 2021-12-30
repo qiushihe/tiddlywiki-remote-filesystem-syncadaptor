@@ -33,6 +33,18 @@ const DUMMY_TIDDLERS = [
     text: "dummy dummy dummy text yo!",
     tags: [],
     list: []
+  },
+  {
+    __rfsNamespace: "dummy-namespace",
+    created: new Date(),
+    creator: "dummy-creator",
+    modified: new Date(),
+    modifier: "dummy-modifier",
+    type: "text/vnd.tiddlywiki",
+    title: "$:/palette",
+    text: "$:/palettes/SolarizedDark",
+    tags: [],
+    list: []
   }
 ];
 

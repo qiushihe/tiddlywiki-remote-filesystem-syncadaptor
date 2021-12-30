@@ -2,7 +2,9 @@
 title: $:/core/modules/syncer.js
 type: application/javascript
 module-type: global
+
 The syncer tracks changes to the store and synchronises them to a remote data store represented as a "sync adaptor"
+
 \*/
 (function(){
 
@@ -134,14 +136,6 @@ The syncer tracks changes to the store and synchronises them to a remote data st
         $tw.utils.copyToClipboard($tw.utils.getSystemInfo() + "\n\nLog:\n" + self.logger.getBuffer());
       });
     }
-    // Handle loading of skinny tiddlers on demand.
-    $tw.hooks.addHook("th-navigating", (evt) => {
-      const tiddler = $tw.wiki.getTiddler(evt.navigateTo);
-      if (tiddler && (tiddler.fields._is_skinny || tiddler.fields.text === undefined)) {
-        $tw.wiki.dispatchEvent("lazyLoad", tiddler.fields.title);
-      }
-      return evt;
-    });
     // Listen out for lazyLoad events
     if(!this.disableUI && this.wiki.getTiddlerText(this.titleSyncDisableLazyLoading) !== "yes") {
       this.wiki.addEventListener("lazyLoad",function(title) {
@@ -367,7 +361,7 @@ The syncer tracks changes to the store and synchronises them to a remote data st
           // Ignore the incoming tiddler if it's the same as the revision we've already got
           if(currRevision !== incomingRevision) {
             // Only load the skinny version if we don't already have a fat version of the tiddler
-            if(!tiddler || (tiddler.fields._is_skinny || tiddler.fields.text === undefined)) {
+            if(!tiddler || tiddler.fields._is_skinny || tiddler.fields.text === undefined) {
               self.storeTiddler(tiddlerFields);
             }
             // Only load skinny tiddler immediately if configured to do so.
@@ -412,6 +406,9 @@ The syncer tracks changes to the store and synchronises them to a remote data st
         // Mark the tiddler as needing loading, and having already been lazily loaded
         this.titlesToBeLoaded[title] = true;
         this.titlesHaveBeenLazyLoaded[title] = true;
+        // Since we're handling on-demand lazyLoad event, we shouldn't wait for the poll interval
+        // and instead just sync now.
+        this.syncFromServer();
       }
     }
   };
@@ -547,6 +544,7 @@ The syncer tracks changes to the store and synchronises them to a remote data st
 
   /*
   Choose the next sync task. We prioritise saves, then deletes, then loads from the server
+
   Returns either a task object, null if there's no upcoming tasks, or the boolean true if there are pending tasks that aren't yet due
   */
   Syncer.prototype.chooseNextTask = function() {
