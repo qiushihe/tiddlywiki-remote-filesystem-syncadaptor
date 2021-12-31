@@ -47,7 +47,8 @@ export const s3Fetch = async (
   bucket: string,
   method: string,
   uri: string,
-  query: [string, string][],
+  headers: Record<string, string>,
+  query: Record<string, string>,
   payload: string
 ): Promise<string> => {
   const encoder = new TextEncoder();
@@ -60,17 +61,34 @@ export const s3Fetch = async (
 
   const payloadHash = await getSha256Hash(payload || "");
 
-  const headers: [string, string][] = [
-    ["host", host],
-    ["x-amz-date", nowLongString],
-    ["x-amz-content-sha256", getArrayBufferHexString(payloadHash)]
-  ];
+  const indexedHeaders = Object.keys(headers).reduce((acc, key) => {
+    acc[key.toLowerCase()] = headers[key];
+    return acc;
+  }, {});
+
+  const fixedHeaders = {
+    host: host,
+    "x-amz-date": nowLongString,
+    "x-amz-content-sha256": getArrayBufferHexString(payloadHash)
+  };
+
+  const allHeaders = Object.assign({}, indexedHeaders, fixedHeaders);
+
+  const requestHeaders = Object.keys(allHeaders).reduce((acc, key) => {
+    acc.push([key, allHeaders[key]]);
+    return acc;
+  }, []);
+
+  const requestQuery = Object.keys(query).reduce((acc, key) => {
+    acc.push([key, query[key]]);
+    return acc;
+  }, []);
 
   const canonicalRequest = await getCanonicalRequest(
     method,
     uri,
-    query,
-    headers,
+    requestQuery,
+    requestHeaders,
     payload || ""
   );
 
@@ -100,18 +118,18 @@ export const s3Fetch = async (
     nowShortString,
     region,
     "s3",
-    headers.map(([name]) => name),
+    requestHeaders.map(([name]) => name),
     getArrayBufferHexString(signature)
   );
 
-  const fetchQuery = query
+  const fetchQuery = requestQuery
     .map(
       ([name, value]) =>
         `${encodeURIComponent(name)}=${encodeURIComponent(value)}`
     )
     .join("&");
 
-  const fetchHeaders = headers.reduce((acc, [name, value]) => {
+  const fetchHeaders = requestHeaders.reduce((acc, [name, value]) => {
     acc[name] = value;
     return acc;
   }, {});
@@ -122,7 +140,7 @@ export const s3Fetch = async (
     method: method,
     mode: "cors",
     headers: fetchHeaders,
-    body: payload ? JSON.stringify(payload) : null
+    body: payload ? payload : null
   });
 
   return response.text();

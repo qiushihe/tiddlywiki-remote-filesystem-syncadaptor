@@ -6,7 +6,8 @@ declare module "$:/plugins/qiushihe/remote-filesystem/awsS3.js" {
     bucket: string,
     method: string,
     uri: string,
-    query: [string, string][],
+    headers: Record<string, string>,
+    query: Record<string, string>,
     payload: string
   ) => Promise<string>;
 }

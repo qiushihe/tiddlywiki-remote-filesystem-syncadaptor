@@ -26,7 +26,7 @@ export const getCanonicalRequest = async (
   }
 
   if (!uri.match(/^\//)) {
-    throw new Error("Canonical request uri must not include URL origin.");
+    throw new Error("Canonical request uri must start with a slash.");
   }
 
   if (

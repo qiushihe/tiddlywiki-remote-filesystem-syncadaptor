@@ -1,8 +1,8 @@
 /*\
-title: $:/plugins/qiushihe/remote-filesystem/startup.js
+title: $:/plugins/qiushihe/remote-filesystem/startup-setup.js
 type: application/javascript
 module-type: startup
-Remote filesystem startup function
+Remote filesystem startup setup function
 \*/
 
 import {
@@ -10,7 +10,7 @@ import {
   AWS_S3_CONNECTION_STRING_FIELD_ID
 } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
-export const name = "remote-filesystem";
+export const name = "remote-filesystem-setup";
 export const platforms = ["browser"];
 export const after = ["startup"];
 export const synchronous = true;

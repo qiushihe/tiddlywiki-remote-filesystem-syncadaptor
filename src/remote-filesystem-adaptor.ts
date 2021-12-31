@@ -5,61 +5,62 @@ module-type: syncadaptor
 A sync adaptor module for synchronising with a remote filesystem
 \*/
 
-import { uuidv4 } from "$:/plugins/qiushihe/remote-filesystem/uuidv4.js";
+import { AwsS3Storage } from "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js";
+import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 import { Wiki, Logger } from "../types/tiddlywiki";
 
-const DUMMY_TIDDLERS = [
-  {
-    __rfsNamespace: "dummy-namespace",
-    created: new Date(),
-    creator: "dummy-creator",
-    modified: new Date(),
-    modifier: "dummy-modifier",
-    type: "text/vnd.tiddlywiki",
-    title: "test test test",
-    text: "test test test text yo!",
-    tags: [],
-    list: []
-  },
-  {
-    __rfsNamespace: "dummy-namespace",
-    created: new Date(),
-    creator: "dummy-creator",
-    modified: new Date(),
-    modifier: "dummy-modifier",
-    type: "text/vnd.tiddlywiki",
-    title: "dummy dummy dummy",
-    text: "dummy dummy dummy text yo!",
-    tags: [],
-    list: []
-  },
-  {
-    __rfsNamespace: "dummy-namespace",
-    created: new Date(),
-    creator: "dummy-creator",
-    modified: new Date(),
-    modifier: "dummy-modifier",
-    type: "text/vnd.tiddlywiki",
-    title: "$:/palette",
-    text: "$:/palettes/SolarizedDark",
-    tags: [],
-    list: []
-  }
-];
-
-const DUMMY_TIDDLER_REVISIONS = {
-  "test test test": uuidv4(),
-  "dummy dummy dummy": uuidv4()
+const getNewRevision = (date: Date) => {
+  return [
+    `${date.getUTCFullYear()}`.padStart(4, "0"),
+    `${date.getUTCMonth() + 1}`.padStart(2, "0"),
+    `${date.getUTCDate()}`.padStart(2, "0"),
+    `${date.getUTCHours()}`.padStart(2, "0"),
+    `${date.getUTCMinutes()}`.padStart(2, "0"),
+    `${date.getUTCSeconds()}`.padStart(2, "0"),
+    `${date.getUTCMilliseconds()}`.padStart(4, "0")
+  ].join("");
 };
 
-const DUMMY_TIDDLER_PENDING_REVISIONS = {};
+const TIDDLER_PENDING_REVISIONS = {};
+const pendingRevisionLocks = {};
+const pendingRevisionLockResolves = {};
+
+const getPendingRevisionLock = (title): Promise<void> => {
+  if (!pendingRevisionLocks[title]) {
+    pendingRevisionLocks[title] = new Promise((resolve) => {
+      pendingRevisionLockResolves[title] = resolve;
+    });
+  }
+  return pendingRevisionLocks[title];
+};
+
+const resolvePendingRevisionLock = (title): void => {
+  if (pendingRevisionLocks[title]) {
+    const resolve = pendingRevisionLockResolves[title];
+
+    if (resolve) {
+      setTimeout(() => resolve(), 1);
+    }
+  }
+};
+
+const clearPendingRevisionLock = (title): void => {
+  if (pendingRevisionLocks[title]) {
+    pendingRevisionLocks[title] = null;
+  }
+
+  if (pendingRevisionLockResolves[title]) {
+    pendingRevisionLockResolves[title] = null;
+  }
+};
 
 class RemoteFileSystemAdaptor {
   wiki: Wiki;
   logger: Logger;
   name: string;
   supportsLazyLoading: boolean;
+  s3Storage: AwsS3Storage;
 
   constructor(options) {
     this.wiki = options.wiki;
@@ -72,22 +73,24 @@ class RemoteFileSystemAdaptor {
     // skinny tiddlers list to be loaded multiple times.
     this.supportsLazyLoading = true;
 
-    // Hook into the "saving tiddler" hook to manipulate revision value.
-    // The way the `syncer` module works is by listening to the `change` event on the `$tw.wiki`
-    // object. This means that by the time the `syncer` module (and in turn this module) gets to do
-    // anything, the core `$tw.wiki` has already "saved" the tiddler (and we're just syncing those
-    // changes to a remote place).
-    // So here we intercept the hook, advance the revision value for the tiddler and store the new
-    // revision value in a "pending" index.
-    // In `saveTiddler` below, if the saving operation is successful, we'll apply the pending
-    // revision value to the non-pending revision index.
-    $tw.hooks.addHook("th-saving-tiddler", (tiddler) => {
-      DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title] = uuidv4();
-
-      return Object.assign({}, tiddler.fields, {
-        revision: DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title]
+    // Hook into the `change` event of `wiki` to generate new revision value for modified tiddlers.
+    this.wiki.addEventListener("change", (changes) => {
+      Object.keys(changes).forEach((title) => {
+        if (changes[title].modified) {
+          getPendingRevisionLock(title).then();
+          TIDDLER_PENDING_REVISIONS[title] = getNewRevision(new Date());
+          setTimeout(() => resolvePendingRevisionLock(title), 1);
+        }
       });
     });
+
+    this.s3Storage = new AwsS3Storage(() =>
+      Promise.resolve(
+        localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY)
+      )
+    );
+
+    // this.s3Storage.test();
   }
 
   // Accept an external logger (in this case it's the own logger of the `syncer` module).
@@ -140,36 +143,29 @@ class RemoteFileSystemAdaptor {
   // If this function is implemented, it will be called instead of `getSkinnyTiddlers`.
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
-  getSkinnyTiddlers(callback) {
-    callback(
-      null,
-      DUMMY_TIDDLERS.map(function (tiddler) {
-        return Object.assign({}, tiddler, {
-          text: undefined,
-          revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
-        });
-      })
+  async getSkinnyTiddlers(callback) {
+    const [indexErr, index] = await this.s3Storage.rebuildSkinnyTiddlersIndex(
+      "rfs-test"
+    );
+
+    setTimeout(
+      () =>
+        callback(
+          null,
+          index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
+            Object.assign({}, fields, {
+              revision: revision
+            })
+          )
+        ),
+      1
     );
   }
 
   // Extract the metadata relevant to this specific sync adapter.
-  // These metadata are sometimes referred to as `adaptorInfo`.
-  getTiddlerInfo(tiddler) {
-    const namespace = tiddler.fields.__rfsNamespace;
-    if (namespace) {
-      this.logger.log(
-        "Got tiddler info",
-        tiddler.fields.title,
-        "namespace:",
-        namespace
-      );
-
-      return {
-        __rfsNamespace: namespace
-      };
-    } else {
-      return {};
-    }
+  // This metadata is sometimes referred to as `adaptorInfo`.
+  getTiddlerInfo(/* tiddler */) {
+    return { __rfsNamespace: "rfs-test" };
   }
 
   // Extract the revision information for a tiddler with the given title.
@@ -178,52 +174,50 @@ class RemoteFileSystemAdaptor {
     return this.wiki.getTiddler(title).fields.revision;
   }
 
-  loadTiddler(title, callback) {
-    const tiddler = DUMMY_TIDDLERS.find(function (tiddler) {
-      return tiddler.title === title;
-    });
+  async loadTiddler(title, callback) {
+    const [err, fields, revision] = await this.s3Storage.loadTiddler(
+      "rfs-test",
+      title
+    );
+    if (err) {
+      this.logger.log("Error loading tiddler:", title, err);
 
-    if (tiddler) {
-      setTimeout(() => {
-        this.logger.log("Loaded tiddler:", title);
-
-        callback(
-          null,
-          Object.assign({}, tiddler, {
-            revision: DUMMY_TIDDLER_REVISIONS[tiddler.title]
-          })
-        );
-      }, 1000);
+      callback(err, null);
     } else {
-      setTimeout(() => {
-        this.logger.log("Error loading tiddler:", title);
+      this.logger.log("Loaded tiddler:", title);
 
-        callback(new Error("Error loading tiddler: " + title), null);
-      }, 1000);
+      callback(
+        null,
+        Object.assign({}, fields, {
+          revision: revision
+        })
+      );
     }
   }
 
-  saveTiddler(tiddler, callback, options) {
-    this.logger.log(
-      "Save tiddler:",
-      tiddler.getFieldStrings({ exclude: [] }),
-      options
-    );
+  async saveTiddler(tiddler, callback, options) {
+    this.logger.log("Saving tiddler:", tiddler.fields.title);
 
     const tiddlerInfo = options.tiddlerInfo || {};
     const adaptorInfo = tiddlerInfo.adaptorInfo || {};
+    adaptorInfo.__rfsNamespace = adaptorInfo.__rfsNamespace || "rfs-test";
 
-    adaptorInfo.__rfsNamespace =
-      adaptorInfo.__rfsNamespace || tiddler.__rfsNamespace;
+    await getPendingRevisionLock(tiddler.fields.title);
+    const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
-    // Assuming the saving operation is successful, here we apply the "pending" revision value to
-    // the non-pending revision index, ...
-    DUMMY_TIDDLER_REVISIONS[tiddler.fields.title] =
-      DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
-    // ... and clear the pending value from the pending index.
-    delete DUMMY_TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
+    await this.s3Storage.saveTiddler(
+      "rfs-test",
+      tiddler.fields,
+      pendingRevision
+    );
 
-    callback(null, adaptorInfo, DUMMY_TIDDLER_REVISIONS[tiddler.fields.title]);
+    clearPendingRevisionLock(tiddler.getFieldString("title"));
+    this.logger.log("Saved tiddler:", tiddler.fields.title);
+
+    // Clear the pending value from the pending index.
+    delete TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
+
+    setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
   }
 
   deleteTiddler(title, callback, options) {
@@ -248,7 +242,7 @@ class RemoteFileSystemAdaptor {
 // generate a ready-to-use HTML file, then this long-pulling based queue runner system will block
 // the CLI process and prevent it from existing.
 //
-// Although it is TOTALL FINE to use CTL-C to kill the process in this case, it's also not a very
+// Although it is TOTALLY FINE to use CTL-C to kill the process in this case, it's also not a very
 // clean solution:
 //
 // * There should be a way to tell `tiddlywiki --build` to just build the HTML without running

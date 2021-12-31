@@ -72,7 +72,7 @@ describe("getCanonicalRequest", () => {
       .catch((err) => {
         expect(err).toBeInstanceOf(Error);
         expect((err as Error).message).toEqual(
-          "Canonical request uri must not include URL origin."
+          "Canonical request uri must start with a slash."
         );
       });
   });

@@ -17,6 +17,7 @@ export type Wiki = {
   addTiddler: (tiddler: Tiddler) => void;
   getTiddler: (title: string) => Tiddler;
   getTiddlerText: (title: string) => string;
+  filterTiddlers: (query: string) => string[];
   addEventListener: (
     name: string,
     listener: (...args: unknown[]) => void
