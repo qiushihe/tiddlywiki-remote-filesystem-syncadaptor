@@ -12,6 +12,8 @@ import {
   encode
 } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
+import { SkinnyTiddlersIndex } from "../types/types";
+
 const decodeKeyStrings = (keyStrings: string[]) => {
   return keyStrings.map((keyString) => {
     const keyMatch = keyString.match(
@@ -39,17 +41,52 @@ const decodeKeyStrings = (keyStrings: string[]) => {
 };
 
 export class AwsS3IndexedStorage extends AwsS3Storage {
-  async rebuildIndex(namespace: string): Promise<
-    [
-      Error,
-      {
-        indexedSkinnyTiddlers: {
-          revision: string;
-          fields: Record<string, unknown>;
-        }[];
+  async loadIndex(namespace: string): Promise<[Error, SkinnyTiddlersIndex]> {
+    const encodedNamespace = encode(namespace);
+    const indexUri = `/${encodedNamespace}/index.json`;
+
+    const data = await this.s3Fetch(
+      "GET",
+      indexUri,
+      {},
+      { "response-content-type": "text/plain" },
+      null
+    );
+
+    try {
+      const index = JSON.parse(data);
+
+      try {
+        index.rebuiltAt = new Date(index.rebuiltAt);
+      } catch {
+        index.rebuiltAt = null;
       }
-    ]
-  > {
+
+      return [null, index];
+    } catch (err) {
+      return [err, null];
+    }
+  }
+
+  async saveIndex(namespace: string, index: SkinnyTiddlersIndex): Promise<Error> {
+    const encodedNamespace = encode(namespace);
+    const indexUri = `/${encodedNamespace}/index.json`;
+
+    await this.s3Fetch(
+      "PUT",
+      indexUri,
+      { "content-type": "text/plain" },
+      {},
+      JSON.stringify(index)
+    );
+
+    // Generate manifest.txt
+    await this.rebuildManifest(namespace, index);
+
+    return null;
+  }
+
+  async rebuildIndex(namespace: string): Promise<[Error, SkinnyTiddlersIndex]> {
     const [listAllErr, listAllKeyStrings] = await this.listAll(null);
 
     const decodedList = decodeKeyStrings(listAllKeyStrings);
@@ -90,37 +127,26 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
       }
     });
 
-    const index = {
+    const index: SkinnyTiddlersIndex = {
       rebuiltAt: new Date(),
+      allKeys: listAllKeyStrings,
       indexedSkinnyTiddlers: parsedData
         .filter(({ err }) => err === null)
         .map(({ tiddler }) => tiddler)
     };
 
-    const encodedNamespace = encode(namespace);
-    const indexUri = `/${encodedNamespace}/index.json`;
-
-    await this.s3Fetch(
-      "PUT",
-      indexUri,
-      { "content-type": "text/plain" },
-      {},
-      JSON.stringify(index)
-    );
-
-    // Generate manifest.txt
-    await this.rebuildManifest(namespace, listAllKeyStrings);
+    await this.saveIndex(namespace, index);
 
     return [null, index];
   }
 
-  // This `manifest.txt` isn't used by any code in any way. Instead it's only meant to make looking
-  // at files stored in S3 easier.
+  // This `manifest.txt` isn't used by any code in any way. Instead, it's only meant to make
+  // looking at files stored in S3 easier.
   async rebuildManifest(
     namespace: string,
-    keyStrings: string[]
+    index: SkinnyTiddlersIndex
   ): Promise<Error> {
-    const decodedList = decodeKeyStrings(keyStrings);
+    const decodedList = decodeKeyStrings(index.allKeys);
 
     const filteredList = decodedList.filter(
       ({ isValid, isSkinny, namespace: keyNamespace, title }) => {

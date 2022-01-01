@@ -1,5 +1,5 @@
 declare module "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js" {
-  export interface AwsS3Storage {
+  export class AwsS3Storage {
     constructor(getConnectionString: () => Promise<string>);
 
     saveTiddler(

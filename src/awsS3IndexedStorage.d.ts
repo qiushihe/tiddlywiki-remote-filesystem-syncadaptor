@@ -1,15 +1,8 @@
+import { SkinnyTiddlersIndex } from "../types/types";
+
 declare module "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js" {
-  export interface AwsS3IndexedStorage {
-    rebuildIndex(namespace: string): Promise<
-      [
-        Error,
-        {
-          indexedSkinnyTiddlers: {
-            revision: string;
-            fields: Record<string, unknown>;
-          }[];
-        }
-      ]
-    >;
+  export class AwsS3IndexedStorage {
+    loadIndex(namespace: string): Promise<[Error, SkinnyTiddlersIndex]>;
+    rebuildIndex(namespace: string): Promise<[Error, SkinnyTiddlersIndex]>;
   }
 }

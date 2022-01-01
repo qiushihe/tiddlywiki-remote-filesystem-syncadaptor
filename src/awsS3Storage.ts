@@ -8,12 +8,7 @@ Remote filesystem aws s3 request functions
 import { s3Fetch } from "$:/plugins/qiushihe/remote-filesystem/awsS3.js";
 import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
-type ConnectionInfo = {
-  accessKey: string;
-  secretKey: string;
-  region: string;
-  bucket: string;
-};
+import { ConnectionInfo } from "../types/types";
 
 // Connection string format: aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com
 const CONNECTION_STRING_REGEXP = new RegExp(

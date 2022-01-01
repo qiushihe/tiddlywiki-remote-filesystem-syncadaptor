@@ -5,18 +5,13 @@ module-type: syncadaptor
 A sync adaptor module for synchronising with a remote filesystem
 \*/
 
-import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage";
+import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
+import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 import { Wiki, Logger } from "../types/tiddlywiki";
 
-type AdaptorInfo = {
-  __rfsNamespace: string;
-};
-
-type TiddlerInfo = {
-  adaptorInfo: AdaptorInfo;
-};
+import { AdaptorInfo, TiddlerInfo } from "../types/types";
 
 const getNewRevision = (date: Date) => {
   return [
@@ -69,6 +64,7 @@ class RemoteFileSystemAdaptor {
   name: string;
   supportsLazyLoading: boolean;
   s3Storage: AwsS3IndexedStorage;
+  state: SharedState;
 
   constructor(options) {
     this.wiki = options.wiki;
@@ -98,7 +94,7 @@ class RemoteFileSystemAdaptor {
       )
     );
 
-    // this.s3Storage.test();
+    this.state = SharedState.getDefaultInstance();
   }
 
   // Accept an external logger (in this case it's the own logger of the `syncer` module).
@@ -152,7 +148,36 @@ class RemoteFileSystemAdaptor {
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   async getSkinnyTiddlers(callback) {
-    const [indexErr, index] = await this.s3Storage.rebuildIndex("rfs-test");
+    let index = this.state.getIndex();
+
+    if (!index) {
+      const [rebuildIndexErr, rebuiltIndex] = await this.s3Storage.rebuildIndex(
+        "rfs-test"
+      );
+      if (!rebuildIndexErr) {
+        this.state.setIndex(rebuiltIndex);
+        index = rebuiltIndex;
+      } else {
+        console.error("!!! Handle this error", rebuildIndexErr);
+      }
+    } else {
+      if (this.state.getIndexStale()) {
+        const [loadIndexErr, loadedIndex] = await this.s3Storage.loadIndex(
+          "rfs-test"
+        );
+        if (!loadIndexErr) {
+          this.state.setIndex(loadedIndex);
+          index = loadedIndex;
+        } else {
+          console.error("!!! Handle this error", loadIndexErr);
+        }
+      } else {
+        // Keep `index = this.state.getIndex()`.
+      }
+    }
+
+    // Mark the index as stale so the next time we'll have to re-fetch it.
+    this.state.setIndexStale(true);
 
     setTimeout(
       () =>
@@ -214,17 +239,28 @@ class RemoteFileSystemAdaptor {
     await getPendingRevisionLock(tiddler.fields.title);
     const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
-    await this.s3Storage.saveTiddler(
-      __rfsNamespace,
-      tiddler.fields,
-      pendingRevision
-    );
+    // Only actually persist the tiddler if it's not a transient tiddler.
+    if (
+      !this.state.getTransientTiddlerTitles().includes(tiddler.fields.title)
+    ) {
+      await this.s3Storage.saveTiddler(
+        __rfsNamespace,
+        tiddler.fields,
+        pendingRevision
+      );
+      this.logger.log("Saved tiddler:", tiddler.fields.title);
+    } else {
+      this.logger.log(
+        "Skipped saving transient tiddler:",
+        tiddler.fields.title
+      );
+    }
 
+    // Clear the pending revision lock and value;
     clearPendingRevisionLock(tiddler.getFieldString("title"));
-    this.logger.log("Saved tiddler:", tiddler.fields.title);
-
-    // Clear the pending value from the pending index.
     delete TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
+
+    console.log("TODO: Update Index!");
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
     setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
@@ -241,6 +277,8 @@ class RemoteFileSystemAdaptor {
 
     await this.s3Storage.deleteTiddler(__rfsNamespace, title);
     this.logger.log("Deleted tiddler:", title);
+
+    console.log("TODO: Update Index!");
 
     callback(null, null);
   }
