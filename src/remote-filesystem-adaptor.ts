@@ -5,10 +5,18 @@ module-type: syncadaptor
 A sync adaptor module for synchronising with a remote filesystem
 \*/
 
-import { AwsS3Storage } from "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js";
+import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 import { Wiki, Logger } from "../types/tiddlywiki";
+
+type AdaptorInfo = {
+  __rfsNamespace: string;
+};
+
+type TiddlerInfo = {
+  adaptorInfo: AdaptorInfo;
+};
 
 const getNewRevision = (date: Date) => {
   return [
@@ -60,7 +68,7 @@ class RemoteFileSystemAdaptor {
   logger: Logger;
   name: string;
   supportsLazyLoading: boolean;
-  s3Storage: AwsS3Storage;
+  s3Storage: AwsS3IndexedStorage;
 
   constructor(options) {
     this.wiki = options.wiki;
@@ -84,7 +92,7 @@ class RemoteFileSystemAdaptor {
       });
     });
 
-    this.s3Storage = new AwsS3Storage(() =>
+    this.s3Storage = new AwsS3IndexedStorage(() =>
       Promise.resolve(
         localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY)
       )
@@ -144,9 +152,7 @@ class RemoteFileSystemAdaptor {
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   async getSkinnyTiddlers(callback) {
-    const [indexErr, index] = await this.s3Storage.rebuildSkinnyTiddlersIndex(
-      "rfs-test"
-    );
+    const [indexErr, index] = await this.s3Storage.rebuildIndex("rfs-test");
 
     setTimeout(
       () =>
@@ -164,7 +170,7 @@ class RemoteFileSystemAdaptor {
 
   // Extract the metadata relevant to this specific sync adapter.
   // This metadata is sometimes referred to as `adaptorInfo`.
-  getTiddlerInfo(/* tiddler */) {
+  getTiddlerInfo(/* tiddler */): AdaptorInfo {
     return { __rfsNamespace: "rfs-test" };
   }
 
@@ -195,18 +201,21 @@ class RemoteFileSystemAdaptor {
     }
   }
 
-  async saveTiddler(tiddler, callback, options) {
+  async saveTiddler(tiddler, callback, options: { tiddlerInfo: TiddlerInfo }) {
     this.logger.log("Saving tiddler:", tiddler.fields.title);
 
-    const tiddlerInfo = options.tiddlerInfo || {};
-    const adaptorInfo = tiddlerInfo.adaptorInfo || {};
-    adaptorInfo.__rfsNamespace = adaptorInfo.__rfsNamespace || "rfs-test";
+    const {
+      tiddlerInfo: {
+        adaptorInfo = {} as AdaptorInfo,
+        adaptorInfo: { __rfsNamespace = "rfs-test" } = {} as AdaptorInfo
+      } = {} as TiddlerInfo
+    } = options || {};
 
     await getPendingRevisionLock(tiddler.fields.title);
     const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
     await this.s3Storage.saveTiddler(
-      "rfs-test",
+      __rfsNamespace,
       tiddler.fields,
       pendingRevision
     );
@@ -217,17 +226,25 @@ class RemoteFileSystemAdaptor {
     // Clear the pending value from the pending index.
     delete TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
+    adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
     setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
   }
 
-  deleteTiddler(title, callback, options) {
-    this.logger.log("Delete tiddler:", title);
+  async deleteTiddler(title, callback, options: { tiddlerInfo: TiddlerInfo }) {
+    this.logger.log("Deleting tiddler:", title);
+
+    const {
+      tiddlerInfo: {
+        adaptorInfo: { __rfsNamespace = "rfs-test" } = {} as AdaptorInfo
+      } = {} as TiddlerInfo
+    } = options || {};
+
+    await this.s3Storage.deleteTiddler(__rfsNamespace, title);
+    this.logger.log("Deleted tiddler:", title);
 
     callback(null, null);
   }
 }
-
-// export const adaptorClass = RemoteFileSystemAdaptor;
 
 // We have to not export this module at all if we can detect that it's the `tiddlywiki` Node.js CLI
 // that's running the code.

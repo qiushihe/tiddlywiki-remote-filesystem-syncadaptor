@@ -13,16 +13,6 @@ declare module "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js" {
       title: string
     ): Promise<[Error, Record<string, unknown>, string]>;
 
-    rebuildSkinnyTiddlersIndex(namespace: string): Promise<
-      [
-        Error,
-        {
-          indexedSkinnyTiddlers: {
-            revision: string;
-            fields: Record<string, unknown>;
-          }[];
-        }
-      ]
-    >;
+    deleteTiddler(namespace: string, title: string): Promise<Error>;
   }
 }

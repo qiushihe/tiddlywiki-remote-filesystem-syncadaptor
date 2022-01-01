@@ -5,7 +5,7 @@ module-type: startup
 Remote filesystem startup preload function
 \*/
 
-import { AwsS3Storage } from "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js";
+import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 export const name = "remote-filesystem-preload";
@@ -13,14 +13,21 @@ export const platforms = ["browser"];
 export const before = ["startup"];
 export const synchronous = false;
 
-const restorePalette = async (s3Storage: AwsS3Storage) => {
+const restorePalette = async (s3Storage: AwsS3IndexedStorage) => {
   const [err, fields] = await s3Storage.loadTiddler("rfs-test", "$:/palette");
   if (!err) {
     $tw.wiki.addTiddler(new $tw.Tiddler(fields));
   }
 };
 
-const restoreDefaultTiddlers = async (s3Storage: AwsS3Storage) => {
+const restoreDefaultTiddlers = async (s3Storage: AwsS3IndexedStorage) => {
+  // HACK: Because this startup function is set to run before the built-in startup module (i.e.
+  //       $:/core/modules/startup.js) and $tw.perf is initialized in the built-in startup module,
+  //       we have to hack manually insert a dummy `$tw.perf.measure` function so the call to
+  //       parse default tiddlers string -- $tw.wiki.filterTiddlers(...) -- can run without error.
+  // @ts-ignore
+  $tw.perf = { measure: (name, fn) => fn };
+
   let defaultTiddlersPromise = Promise.resolve();
 
   const [err, fields] = await s3Storage.loadTiddler(
@@ -67,13 +74,6 @@ const restoreDefaultTiddlers = async (s3Storage: AwsS3Storage) => {
 };
 
 export const startup = async (callback) => {
-  // HACK: Because this startup function is set to run before the built-in startup module (i.e.
-  //       $:/core/modules/startup.js) and $tw.perf is initialized in the built-in startup module,
-  //       we have to hack manually insert a dummy `$tw.perf.measure` function so the call to
-  //       parse default tiddlers string -- $tw.wiki.filterTiddlers(...) -- can run without error.
-  // @ts-ignore
-  $tw.perf = { measure: (name, fn) => fn };
-
   // TODO: Implement some sort of workaround to pre-load $:/StoryList.
   //
   //       The `$:/core/modules/startup/story.js` currently does not check if the $:/StoryList
@@ -93,7 +93,7 @@ export const startup = async (callback) => {
   //       receive the `defaultToCurrentStory` option at startup time the same way it currently
   //       receives the `disableHistory` option.
 
-  const s3Storage = new AwsS3Storage(() =>
+  const s3Storage = new AwsS3IndexedStorage(() =>
     Promise.resolve(localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY))
   );
 

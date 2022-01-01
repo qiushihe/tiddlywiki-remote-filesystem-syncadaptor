@@ -6,10 +6,7 @@ Remote filesystem aws s3 request functions
 \*/
 
 import { s3Fetch } from "$:/plugins/qiushihe/remote-filesystem/awsS3.js";
-import {
-  encode,
-  decode
-} from "$:/plugins/qiushihe/remote-filesystem/base62.js";
+import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
 type ConnectionInfo = {
   accessKey: string;
@@ -22,32 +19,6 @@ type ConnectionInfo = {
 const CONNECTION_STRING_REGEXP = new RegExp(
   "^aws://([^:]+):([^@]+)@([^.]+).s3.([^.]+).amazonaws.com$"
 );
-
-const decodeKeyStrings = (keyStrings: string[]) => {
-  return keyStrings.map((keyString) => {
-    const keyMatch = keyString.match(
-      new RegExp("^([^/]+)/([^/]+)/(skinny|fat).json$")
-    );
-
-    if (keyMatch) {
-      return {
-        isValid: true,
-        key: keyString,
-        namespace: decode(keyMatch[1]),
-        title: decode(keyMatch[2]),
-        isSkinny: keyMatch[3].toLowerCase() === "skinny"
-      };
-    } else {
-      return {
-        isValid: false,
-        key: keyString,
-        namespace: "",
-        title: "",
-        isSkinny: false
-      };
-    }
-  });
-};
 
 export class AwsS3Storage {
   getConnectionString: () => Promise<string>;
@@ -142,9 +113,11 @@ export class AwsS3Storage {
     const encodedNamespace = encode(namespace);
     const encodedTitle = encode(title);
 
+    const fatUri = `/${encodedNamespace}/${encodedTitle}/fat.json`;
+
     const data = await this.s3Fetch(
       "GET",
-      `/${encodedNamespace}/${encodedTitle}/fat.json`,
+      fatUri,
       {},
       { "response-content-type": "text/plain" },
       null
@@ -198,74 +171,19 @@ export class AwsS3Storage {
     return [null];
   }
 
-  async rebuildSkinnyTiddlersIndex(namespace: string): Promise<
-    [
-      Error,
-      {
-        indexedSkinnyTiddlers: {
-          revision: string;
-          fields: Record<string, unknown>;
-        }[];
-      }
-    ]
-  > {
-    const [listAllErr, listAllKeyStrings] = await this.listAll(null);
-
-    const decodedList = decodeKeyStrings(listAllKeyStrings);
-
-    const filteredList = decodedList.filter(
-      ({ isValid, isSkinny, namespace: keyNamespace, title }) => {
-        return (
-          // Only index keys matching the correct pattern.
-          isValid &&
-          // Only index the stored skinny tiddlers.
-          isSkinny &&
-          // Only index tiddlers in the specified namespace.
-          keyNamespace === namespace &&
-          // Don't index any system tiddlers.
-          // Use startup-preload to load those system tiddlers directly instead.
-          !title.match(new RegExp("^\\$:"))
-        );
-      }
-    );
-
-    const data = await Promise.all(
-      filteredList.map(({ key }) => {
-        return this.s3Fetch(
-          "GET",
-          `/${key}`,
-          {},
-          { "response-content-type": "text/plain" },
-          null
-        );
-      })
-    );
-
-    const parsedData = data.map((entryString) => {
-      try {
-        return { fields: JSON.parse(entryString), err: null };
-      } catch (err) {
-        return { fields: null, err: err };
-      }
-    });
-
-    const index = {
-      indexedSkinnyTiddlers: parsedData
-        .filter(({ err }) => err === null)
-        .map(({ fields }) => fields)
-    };
-
+  async deleteTiddler(namespace: string, title: string): Promise<Error> {
     const encodedNamespace = encode(namespace);
-    const indexUri = `/${encodedNamespace}/index.json`;
+    const encodedTitle = encode(title);
 
-    await this.s3Fetch(
-      "PUT",
-      indexUri,
-      { "content-type": "text/plain" },
-      {},
-      JSON.stringify(index)
-    );
+    const fatUri = `/${encodedNamespace}/${encodedTitle}/fat.json`;
+    const skinnyUri = `/${encodedNamespace}/${encodedTitle}/skinny.json`;
 
-    return [null, index];
+    await this.s3Fetch("DELETE", fatUri, {}, {}, null);
+
+    await this.s3Fetch("DELETE", skinnyUri, {}, {}, null);
+
+    // TODO: Parse responses for error.
+
+    return null;
   }
 }
