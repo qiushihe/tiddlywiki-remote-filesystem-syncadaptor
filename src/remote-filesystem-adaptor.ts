@@ -8,10 +8,14 @@ A sync adaptor module for synchronising with a remote filesystem
 import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
 import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
+import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
-import { Wiki, Logger } from "../types/tiddlywiki";
+import { Wiki, Logger, TiddlerFields } from "../types/tiddlywiki";
+import { AdaptorInfo, SkinnyTiddlersIndex, TiddlerInfo } from "../types/types";
 
-import { AdaptorInfo, TiddlerInfo } from "../types/types";
+const TIDDLER_PENDING_REVISIONS = {};
+const pendingRevisionLocks = {};
+const pendingRevisionLockResolves = {};
 
 const getNewRevision = (date: Date) => {
   return [
@@ -24,10 +28,6 @@ const getNewRevision = (date: Date) => {
     `${date.getUTCMilliseconds()}`.padStart(4, "0")
   ].join("");
 };
-
-const TIDDLER_PENDING_REVISIONS = {};
-const pendingRevisionLocks = {};
-const pendingRevisionLockResolves = {};
 
 const getPendingRevisionLock = (title): Promise<void> => {
   if (!pendingRevisionLocks[title]) {
@@ -58,6 +58,53 @@ const clearPendingRevisionLock = (title): void => {
   }
 };
 
+const deleteSkinnyTiddlerIndex = (
+  index: SkinnyTiddlersIndex,
+  title: string
+): SkinnyTiddlersIndex => {
+  index.allDecodedKeys = index.allDecodedKeys.filter(
+    ({ title: decodedKeyTitle }) => decodedKeyTitle !== title
+  );
+
+  index.indexedSkinnyTiddlers = index.indexedSkinnyTiddlers.filter(
+    ({ fields: indexedSkinnyTiddlerFields }) =>
+      indexedSkinnyTiddlerFields.title !== title
+  );
+
+  return index;
+};
+
+const updateSkinnyTiddlerIndex = (
+  index: SkinnyTiddlersIndex,
+  fields: TiddlerFields,
+  revision: string
+): SkinnyTiddlersIndex => {
+  const _index = deleteSkinnyTiddlerIndex(index, fields.title);
+
+  const encodedNamespace = encode("rfs-test");
+  const encodedTitle = encode(fields.title);
+
+  _index.allDecodedKeys.push({
+    isValid: true,
+    key: `${encodedNamespace}/${encodedTitle}/skinny.json`,
+    namespace: "rfs-test",
+    title: fields.title,
+    isSkinny: true
+  });
+
+  _index.allDecodedKeys.push({
+    isValid: true,
+    key: `${encodedNamespace}/${encodedTitle}/fat.json`,
+    namespace: "rfs-test",
+    title: fields.title,
+    isSkinny: false
+  });
+
+  _index.indexedSkinnyTiddlers.push({ fields: fields, revision: revision });
+
+  return _index;
+};
+
 class RemoteFileSystemAdaptor {
   wiki: Wiki;
   logger: Logger;
@@ -81,7 +128,9 @@ class RemoteFileSystemAdaptor {
     this.wiki.addEventListener("change", (changes) => {
       Object.keys(changes).forEach((title) => {
         if (changes[title].modified) {
+          // Not waiting for the `then` on purpose to ensure the revision lock promise is in place.
           getPendingRevisionLock(title).then();
+
           TIDDLER_PENDING_REVISIONS[title] = getNewRevision(new Date());
           setTimeout(() => resolvePendingRevisionLock(title), 1);
         }
@@ -148,36 +197,12 @@ class RemoteFileSystemAdaptor {
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   async getSkinnyTiddlers(callback) {
-    let index = this.state.getIndex();
-
-    if (!index) {
-      const [rebuildIndexErr, rebuiltIndex] = await this.s3Storage.rebuildIndex(
-        "rfs-test"
-      );
-      if (!rebuildIndexErr) {
-        this.state.setIndex(rebuiltIndex);
-        index = rebuiltIndex;
-      } else {
-        console.error("!!! Handle this error", rebuildIndexErr);
-      }
+    const [indexErr, index] = await this.s3Storage.loadIndex("rfs-test");
+    if (!indexErr) {
+      this.state.setIndex(index);
     } else {
-      if (this.state.getIndexStale()) {
-        const [loadIndexErr, loadedIndex] = await this.s3Storage.loadIndex(
-          "rfs-test"
-        );
-        if (!loadIndexErr) {
-          this.state.setIndex(loadedIndex);
-          index = loadedIndex;
-        } else {
-          console.error("!!! Handle this error", loadIndexErr);
-        }
-      } else {
-        // Keep `index = this.state.getIndex()`.
-      }
+      console.error("!!! Handle this error", indexErr);
     }
-
-    // Mark the index as stale so the next time we'll have to re-fetch it.
-    this.state.setIndexStale(true);
 
     setTimeout(
       () =>
@@ -240,9 +265,7 @@ class RemoteFileSystemAdaptor {
     const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
     // Only actually persist the tiddler if it's not a transient tiddler.
-    if (
-      !this.state.getTransientTiddlerTitles().includes(tiddler.fields.title)
-    ) {
+    if (!this.state.isTransientTiddlerTitle(tiddler.fields.title)) {
       await this.s3Storage.saveTiddler(
         __rfsNamespace,
         tiddler.fields,
@@ -260,7 +283,13 @@ class RemoteFileSystemAdaptor {
     clearPendingRevisionLock(tiddler.getFieldString("title"));
     delete TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
 
-    console.log("TODO: Update Index!");
+    const updatedIndex = updateSkinnyTiddlerIndex(
+      this.state.getIndex(),
+      tiddler.fields,
+      pendingRevision
+    );
+    await this.saveIndex(updatedIndex);
+    this.logger.log("Updated tiddler index:", tiddler.fields.title, updatedIndex);
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
     setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
@@ -278,9 +307,16 @@ class RemoteFileSystemAdaptor {
     await this.s3Storage.deleteTiddler(__rfsNamespace, title);
     this.logger.log("Deleted tiddler:", title);
 
-    console.log("TODO: Update Index!");
+    const updatedIndex = deleteSkinnyTiddlerIndex(this.state.getIndex(), title);
+    await this.saveIndex(updatedIndex);
+    this.logger.log("Deleted tiddler index:", title, updatedIndex);
 
-    callback(null, null);
+    callback(null);
+  }
+
+  async saveIndex(index: SkinnyTiddlersIndex) {
+    await this.s3Storage.saveIndex("rfs-test", index);
+    this.state.setIndex(index);
   }
 }
 
@@ -288,9 +324,9 @@ class RemoteFileSystemAdaptor {
 // that's running the code.
 //
 // The reason for only conditionally exporting this module is because, due to the _unique_ way
-// Tiddlywiki's `syncer` module is implemented, if the syncadaptor modeil (i.e.) this module itself
-// includes either `getUpdatedTiddlers` or `getSkinnyTiddlers` functions, then the `syncer` module
-// will initiate a long-pulling based queue runner system.
+// Tiddlywiki's `syncer` module is implemented, if the `syncadaptor` module (i.e. this module
+// itself) includes either `getUpdatedTiddlers` or `getSkinnyTiddlers` functions, then the `syncer`
+// module will initiate a long-pulling based queue runner system.
 //
 // While this system is essential for the function of the wiki, it also can not be disabled for the
 // CLI. Which means, if the entire purpose of running the `tiddlywiki --build` command is to

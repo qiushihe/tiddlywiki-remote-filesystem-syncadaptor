@@ -12,9 +12,14 @@ import {
   encode
 } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
-import { SkinnyTiddlersIndex } from "../types/types";
+import {
+  SkinnyTiddlersIndex,
+  DecodedSkinnyTiddlerIndexKey
+} from "../types/types";
 
-const decodeKeyStrings = (keyStrings: string[]) => {
+const decodeKeyStrings = (
+  keyStrings: string[]
+): DecodedSkinnyTiddlerIndexKey[] => {
   return keyStrings.map((keyString) => {
     const keyMatch = keyString.match(
       new RegExp("^([^/]+)/([^/]+)/(skinny|fat).json$")
@@ -68,7 +73,10 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
     }
   }
 
-  async saveIndex(namespace: string, index: SkinnyTiddlersIndex): Promise<Error> {
+  async saveIndex(
+    namespace: string,
+    index: SkinnyTiddlersIndex
+  ): Promise<Error> {
     const encodedNamespace = encode(namespace);
     const indexUri = `/${encodedNamespace}/index.json`;
 
@@ -86,7 +94,10 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
     return null;
   }
 
-  async rebuildIndex(namespace: string): Promise<[Error, SkinnyTiddlersIndex]> {
+  async rebuildIndex(
+    namespace: string,
+    options: { shouldSkipTiddlerTitle: (title: string) => boolean }
+  ): Promise<[Error, SkinnyTiddlersIndex]> {
     const [listAllErr, listAllKeyStrings] = await this.listAll(null);
 
     const decodedList = decodeKeyStrings(listAllKeyStrings);
@@ -100,9 +111,8 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
           isSkinny &&
           // Only index tiddlers in the specified namespace.
           keyNamespace === namespace &&
-          // Don't index any system tiddlers.
-          // Use startup-preload to load those system tiddlers directly instead.
-          !title.match(new RegExp("^\\$:"))
+          // Don't index any tiddlers skipped by configuration.
+          !options.shouldSkipTiddlerTitle(title)
         );
       }
     );
@@ -129,7 +139,7 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
 
     const index: SkinnyTiddlersIndex = {
       rebuiltAt: new Date(),
-      allKeys: listAllKeyStrings,
+      allDecodedKeys: decodedList,
       indexedSkinnyTiddlers: parsedData
         .filter(({ err }) => err === null)
         .map(({ tiddler }) => tiddler)
@@ -146,9 +156,7 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
     namespace: string,
     index: SkinnyTiddlersIndex
   ): Promise<Error> {
-    const decodedList = decodeKeyStrings(index.allKeys);
-
-    const filteredList = decodedList.filter(
+    const filteredList = index.allDecodedKeys.filter(
       ({ isValid, isSkinny, namespace: keyNamespace, title }) => {
         return (
           // Only index keys matching the correct pattern.
@@ -167,8 +175,8 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
     const entries = []
       .concat(filteredList.map(({ title }) => [encode(title), title]))
       .concat([
-        ["index.json", "Index of skinny tiddlers"],
-        ["manifest.txt", "Manifest (i.e. this file)"]
+        ["index.json", "<< Index of skinny tiddlers >>"],
+        ["manifest.txt", "<< Manifest (i.e. this file) >>"]
       ]);
 
     const maxKeyLength = entries.reduce(
@@ -192,7 +200,11 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
       { "content-type": "text/plain" },
       {},
       []
-        .concat(["MANIFEST - FOR HUMAN EYES ONLY", ""])
+        .concat([
+          "MANIFEST - FOR HUMAN EYES ONLY",
+          `TOTAL COUNT: ${manifest.length}`,
+          ""
+        ])
         .concat(manifest)
         .join("\n")
     );

@@ -9,6 +9,8 @@ import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.j
 import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
+import { SkinnyTiddlersIndex } from "../types/types";
+
 export const name = "remote-filesystem-preload";
 export const platforms = ["browser"];
 export const before = ["startup"];
@@ -18,8 +20,8 @@ const REBUILD_INDEX_MIN = 10;
 
 const ensureIndex = async (
   s3Storage: AwsS3IndexedStorage,
-  state: SharedState
-) => {
+  options: { shouldSkipTiddlerTitle: (title: string) => boolean }
+): Promise<SkinnyTiddlersIndex> => {
   const [indexErr, index] = await s3Storage.loadIndex("rfs-test");
   if (!indexErr) {
     const now = new Date();
@@ -30,35 +32,33 @@ const ensureIndex = async (
     const diffInMinutes = (nowTime - rebuiltAtTime) / 1000 / 60;
 
     if (diffInMinutes >= REBUILD_INDEX_MIN) {
-      const [newIndexErr, newIndex] = await s3Storage.rebuildIndex("rfs-test");
+      const [newIndexErr, newIndex] = await s3Storage.rebuildIndex("rfs-test", {
+        shouldSkipTiddlerTitle: options.shouldSkipTiddlerTitle
+      });
       if (!newIndexErr) {
-        state.setIndex(newIndex);
-        state.setIndexStale(false);
+        return newIndex;
       } else {
-        state.setIndexStale(true);
         console.error("!!! TODO: Handler this error", newIndexErr);
+        return null;
       }
     } else {
-      state.setIndex(index);
-      state.setIndexStale(false);
+      return index;
     }
   } else {
-    state.setIndexStale(true);
     console.error("!!! TODO: Handler this error", indexErr);
+    return null;
   }
 };
 
-const restorePersistentTiddlers = async (
+const loadTiddlers = async (
   s3Storage: AwsS3IndexedStorage,
-  state: SharedState
+  titles: string[]
 ) => {
-  const persistentTiddlersData = await Promise.all(
-    state
-      .getPersistentTiddlerTitles()
-      .map((title) => s3Storage.loadTiddler("rfs-test", title))
+  const results = await Promise.all(
+    titles.map((title) => s3Storage.loadTiddler("rfs-test", title))
   );
 
-  persistentTiddlersData.forEach(([err, fields, revision]) => {
+  results.forEach(([err, fields, revision]) => {
     if (!err) {
       $tw.wiki.addTiddler(
         new $tw.Tiddler(
@@ -71,7 +71,7 @@ const restorePersistentTiddlers = async (
   });
 };
 
-const restoreDefaultTiddlers = async (s3Storage: AwsS3IndexedStorage) => {
+const loadDefaultTiddlers = async (s3Storage: AwsS3IndexedStorage) => {
   // HACK: Because this startup function is set to run before the built-in startup module (i.e.
   //       $:/core/modules/startup.js) and $tw.perf is initialized in the built-in startup module,
   //       we have to hack manually insert a dummy `$tw.perf.measure` function so the call to
@@ -85,25 +85,7 @@ const restoreDefaultTiddlers = async (s3Storage: AwsS3IndexedStorage) => {
     .filterTiddlers(defaultTiddlersText)
     .filter((title) => !$tw.wiki.getTiddler(title));
 
-  if (missingDefaultTiddlerTitles.length > 0) {
-    const missingTiddlersData = await Promise.all(
-      missingDefaultTiddlerTitles.map((title) =>
-        s3Storage.loadTiddler("rfs-test", title)
-      )
-    );
-
-    missingTiddlersData.forEach(([err, fields, revision]) => {
-      if (!err) {
-        $tw.wiki.addTiddler(
-          new $tw.Tiddler(
-            Object.assign({}, fields, {
-              revision: revision
-            })
-          )
-        );
-      }
-    });
-  }
+  await loadTiddlers(s3Storage, missingDefaultTiddlerTitles);
 };
 
 export const startup = async (callback) => {
@@ -132,9 +114,28 @@ export const startup = async (callback) => {
     Promise.resolve(localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY))
   );
 
-  await ensureIndex(s3Storage, sharedState);
-  await restorePersistentTiddlers(s3Storage, sharedState);
-  await restoreDefaultTiddlers(s3Storage);
+  const index = await ensureIndex(s3Storage, {
+    shouldSkipTiddlerTitle: (title) =>
+      sharedState.isTransientTiddlerTitle(title)
+  });
+  if (index) {
+    sharedState.setIndex(index);
+  } else {
+    console.error("!!! Handle missing index!");
+  }
+
+  const preloadTiddlerTitles = index.allDecodedKeys
+    .filter(
+      ({ title, isSkinny }) =>
+        !isSkinny &&
+        sharedState.isPreloadTiddlerTitle(title) &&
+        !sharedState.isTransientTiddlerTitle(title)
+    )
+    .map(({ title }) => title);
+
+  await loadTiddlers(s3Storage, preloadTiddlerTitles);
+
+  await loadDefaultTiddlers(s3Storage);
 
   setTimeout(() => callback(), 1);
 };

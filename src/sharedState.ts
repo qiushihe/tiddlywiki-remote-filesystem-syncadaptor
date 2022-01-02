@@ -7,13 +7,12 @@ Remote filesystem buffer utility functions
 
 import { SkinnyTiddlersIndex } from "../types/types";
 
-const TRANSIENT_TIDDLER_TITLES = ["$:/Import", "$:/StoryList"];
-
-const PERSISTENT_TIDDLER_TITLES = [
-  "$:/favicon.ico",
-  "$:/DefaultTiddlers",
-  "$:/palette"
+const TRANSIENT_TIDDLER_TITLE_REGEXPS = [
+  new RegExp("^\\$:/Import$"),
+  new RegExp("^\\$:/StoryList$")
 ];
+
+const PRELOAD_TIDDLER_TITLE_REGEXPS = [new RegExp("^\\$:/*")];
 
 export class SharedState {
   static defaultInstance: SharedState | null = null;
@@ -26,14 +25,13 @@ export class SharedState {
   }
 
   private index: SkinnyTiddlersIndex;
-  private isIndexStale: boolean;
 
-  getTransientTiddlerTitles(): string[] {
-    return TRANSIENT_TIDDLER_TITLES;
+  isTransientTiddlerTitle(title: string): boolean {
+    return !!TRANSIENT_TIDDLER_TITLE_REGEXPS.find(title.match.bind(title));
   }
 
-  getPersistentTiddlerTitles(): string[] {
-    return PERSISTENT_TIDDLER_TITLES;
+  isPreloadTiddlerTitle(title: string): boolean {
+    return !!PRELOAD_TIDDLER_TITLE_REGEXPS.find(title.match.bind(title));
   }
 
   getIndex(): SkinnyTiddlersIndex {
@@ -42,13 +40,5 @@ export class SharedState {
 
   setIndex(index: SkinnyTiddlersIndex): void {
     this.index = index;
-  }
-
-  getIndexStale(): boolean {
-    return this.isIndexStale;
-  }
-
-  setIndexStale(isStale: boolean): void {
-    this.isIndexStale = isStale;
   }
 }

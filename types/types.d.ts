@@ -5,12 +5,23 @@ export type ConnectionInfo = {
   bucket: string;
 };
 
+export type DecodedSkinnyTiddlerIndexKey = {
+  isValid: boolean;
+  key: string;
+  namespace: string;
+  title: string;
+  isSkinny: boolean;
+};
+
 export type SkinnyTiddlersIndex = {
   rebuiltAt: Date;
-  allKeys: string[];
+  allDecodedKeys: DecodedSkinnyTiddlerIndexKey[];
   indexedSkinnyTiddlers: {
     revision: string;
-    fields: Record<string, unknown>;
+    fields: {
+      title?: string;
+      [key: string]: unknown;
+    };
   }[];
 };
 
