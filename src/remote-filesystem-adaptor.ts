@@ -210,6 +210,8 @@ class RemoteFileSystemAdaptor {
           null,
           index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
             Object.assign({}, fields, {
+              // The `revision` value has to be merged with `fields` here due to how this part of
+              // the `syncer` module works.
               revision: revision
             })
           )
@@ -226,6 +228,8 @@ class RemoteFileSystemAdaptor {
 
   // Extract the revision information for a tiddler with the given title.
   getTiddlerRevision(title) {
+    // TODO: Refactor this to store revision info separately from the tiddler itself.
+
     // The following is the default/built-in behaviour.
     return this.wiki.getTiddler(title).fields.revision;
   }
@@ -244,6 +248,8 @@ class RemoteFileSystemAdaptor {
 
       callback(
         null,
+        // TODO: Refactor this to not merge revision into fields because this part of the `syncer`
+        //       module relies on the `getTiddlerRevision` function to get revision value.
         Object.assign({}, fields, {
           revision: revision
         })
@@ -261,35 +267,47 @@ class RemoteFileSystemAdaptor {
       } = {} as TiddlerInfo
     } = options || {};
 
-    await getPendingRevisionLock(tiddler.fields.title);
-    const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
+    // Grab a copy of the of tiddler's fields for further manipulation.
+    const tiddlerFields = Object.assign({}, tiddler.fields);
+
+    // Ensure the `revision` value is not part of the tiddler's own fields.
+    // The `revision` value only need to be part of the tiddler's fields for the one place in the
+    // `syncer` module during processing of the result of `getSkinnyTiddlers`. In all other places,
+    // the tiddler's revision is obtained from the `getTiddlerRevision` call. So here we explicitly
+    // delete the `revision` value from the tiddler's own fields to ensure it's not used for any
+    // unintended purposes.
+    delete tiddlerFields["revision"];
+
+    await getPendingRevisionLock(tiddlerFields.title);
+    const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddlerFields.title];
 
     // Only actually persist the tiddler if it's not a transient tiddler.
-    if (!this.state.isTransientTiddlerTitle(tiddler.fields.title)) {
+    if (!this.state.isTransientTiddlerTitle(tiddlerFields.title)) {
       await this.s3Storage.saveTiddler(
         __rfsNamespace,
-        tiddler.fields,
+        tiddlerFields,
         pendingRevision
       );
-      this.logger.log("Saved tiddler:", tiddler.fields.title);
+      this.logger.log("Saved tiddler:", tiddlerFields.title);
     } else {
-      this.logger.log(
-        "Skipped saving transient tiddler:",
-        tiddler.fields.title
-      );
+      this.logger.log("Skipped saving transient tiddler:", tiddlerFields.title);
     }
 
     // Clear the pending revision lock and value;
     clearPendingRevisionLock(tiddler.getFieldString("title"));
-    delete TIDDLER_PENDING_REVISIONS[tiddler.fields.title];
+    delete TIDDLER_PENDING_REVISIONS[tiddlerFields.title];
 
     const updatedIndex = updateSkinnyTiddlerIndex(
       this.state.getIndex(),
-      tiddler.fields,
+      tiddlerFields,
       pendingRevision
     );
     await this.saveIndex(updatedIndex);
-    this.logger.log("Updated tiddler index:", tiddler.fields.title, updatedIndex);
+    this.logger.log(
+      "Updated tiddler index:",
+      tiddlerFields.title,
+      updatedIndex
+    );
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
     setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
