@@ -88,9 +88,6 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
       JSON.stringify(index)
     );
 
-    // Generate manifest.txt
-    await this.rebuildManifest(namespace, index);
-
     return null;
   }
 
@@ -147,6 +144,11 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
 
     await this.saveIndex(namespace, index);
 
+    // Generate manifest.txt
+    await this.rebuildManifest(namespace, index, {
+      shouldSkipTiddlerTitle: options.shouldSkipTiddlerTitle
+    });
+
     return [null, index];
   }
 
@@ -154,7 +156,8 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
   // looking at files stored in S3 easier.
   async rebuildManifest(
     namespace: string,
-    index: SkinnyTiddlersIndex
+    index: SkinnyTiddlersIndex,
+    options: { shouldSkipTiddlerTitle: (title: string) => boolean }
   ): Promise<Error> {
     const filteredList = index.allDecodedKeys.filter(
       ({ isValid, isSkinny, namespace: keyNamespace, title }) => {
@@ -164,7 +167,9 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
           // Only index the stored skinny tiddlers.
           isSkinny &&
           // Only index tiddlers in the specified namespace.
-          keyNamespace === namespace
+          keyNamespace === namespace &&
+          // Don't index any tiddlers skipped by configuration.
+          !options.shouldSkipTiddlerTitle(title)
         );
       }
     );
