@@ -7,7 +7,6 @@ A sync adaptor module for synchronising with a remote filesystem
 
 import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
 import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
-import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 import { AsyncLock } from "$:/plugins/qiushihe/remote-filesystem/async-lock.js";
 
@@ -30,6 +29,11 @@ const deleteSkinnyTiddlerIndex = (
   index: SkinnyTiddlersIndex,
   title: string
 ): SkinnyTiddlersIndex => {
+  if (!index) {
+    console.error("!!! Not deleting skinny tiddler index: Index missing.");
+    return null;
+  }
+
   index.allDecodedKeys = index.allDecodedKeys.filter(
     ({ title: decodedKeyTitle }) => decodedKeyTitle !== title
   );
@@ -47,6 +51,11 @@ const updateSkinnyTiddlerIndex = (
   fields: TiddlerFields,
   revision: string
 ): SkinnyTiddlersIndex => {
+  if (!index) {
+    console.error("!!! Not updating skinny tiddler index: Index missing.");
+    return null;
+  }
+
   const _index = deleteSkinnyTiddlerIndex(index, fields.title);
 
   const encodedNamespace = encode("rfs-test");
@@ -78,8 +87,8 @@ class RemoteFileSystemAdaptor {
   logger: Logger;
   name: string;
   supportsLazyLoading: boolean;
-  s3Storage: AwsS3IndexedStorage;
   state: SharedState;
+  s3Storage: AwsS3IndexedStorage;
   tiddlerRevision: Record<string, string>;
   lock: AsyncLock;
 
@@ -94,13 +103,11 @@ class RemoteFileSystemAdaptor {
     // skinny tiddlers list to be loaded multiple times.
     this.supportsLazyLoading = true;
 
-    this.s3Storage = new AwsS3IndexedStorage(() =>
-      Promise.resolve(
-        localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY)
-      )
-    );
-
     this.state = SharedState.getDefaultInstance();
+
+    this.s3Storage = new AwsS3IndexedStorage(() =>
+      Promise.resolve(this.state.readAwsS3ConnectionString())
+    );
 
     this.tiddlerRevision = {};
 
@@ -116,46 +123,21 @@ class RemoteFileSystemAdaptor {
     this.logger = logger;
   }
 
-  // This function's return value indicates if the state of the wiki is "dirty" or not.
-  // This function should only return true if everything is saved successfully, and there is no
-  // other pending operation(s).
-  isReady() {
+  // The return value of this function indicates if this module is ready to accept new save/load
+  // operations or not. If there are still pending requests inflight, then this function should
+  // return `false`.
+  isReady(): boolean {
     return true;
   }
 
   // This function returns status information for this module
   getStatus(callback) {
     if (callback) {
-      setTimeout(() => {
-        // error, is logged in, username, is readonly, is anonymous
-        callback(null, true, "test-username", true, false);
-      }, 1000);
+      // error, is logged in, username, is readonly, is anonymous
+      // callback(null, true, "test-username", true, false);
+      callback(null, false, null, false, false);
     }
   }
-
-  // Implement this function is customize the login prompt.
-  // RemoteFileSystemAdaptor.prototype.displayLoginPrompt = function(syncer) {};
-
-  login(username, password, callback) {
-    this.logger.log("Logging in:", username, password);
-
-    if (callback) {
-      callback(null);
-    }
-  }
-
-  logout(callback) {
-    this.logger.log("Logging out");
-
-    if (callback) {
-      callback(null);
-    }
-  }
-
-  // Implement this function to have more control over the "syncing" logic.
-  // See https://tiddlywiki.com/dev/#SyncAdaptorModules for what this function does.
-  // If this function is implemented, it will be called instead of `getSkinnyTiddlers`.
-  // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
   async getApiLock(): Promise<(err: Error, ret: any) => void> {
     let resolvePromise;
@@ -186,25 +168,32 @@ class RemoteFileSystemAdaptor {
       console.error("!!! Handle this error", indexErr);
     }
 
-    // Replace locally stored tiddler revisions with values from the index.
-    this.tiddlerRevision = {};
-    index.indexedSkinnyTiddlers.forEach(({ revision, fields }) => {
-      this.tiddlerRevision[fields.title] = revision;
-    });
+    if (index) {
+      // Replace locally stored tiddler revisions with values from the index.
+      this.tiddlerRevision = {};
+      index.indexedSkinnyTiddlers.forEach(({ revision, fields }) => {
+        this.tiddlerRevision[fields.title] = revision;
+      });
 
-    callback(
-      null,
-      index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
-        Object.assign({}, fields, {
-          // The `revision` value has to be merged with `fields` here due to how this part of
-          // the `syncer` module works.
-          // In all other parts of the `syncer` module's operation, the `getTiddlerRevision`
-          // function is used to extract tiddler revision from a locally stored index inside
-          // this `syncadaptor` module.
-          revision: revision
-        })
-      )
-    );
+      callback(
+        null,
+        index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
+          Object.assign({}, fields, {
+            // The `revision` value has to be merged with `fields` here due to how this part of
+            // the `syncer` module works.
+            // In all other parts of the `syncer` module's operation, the `getTiddlerRevision`
+            // function is used to extract tiddler revision from a locally stored index inside
+            // this `syncadaptor` module.
+            revision: revision
+          })
+        )
+      );
+    } else {
+      // TODO: Detect the reason for not having `index`: If it's because connection string is not
+      //       set then it's fine to call `callback` with `null` as the first parameter; Otherwise
+      //       we should call `callback` with `new Error("SOME REASON")` as the first parameter.
+      callback(null, []);
+    }
 
     doneApiLock(null, null);
   }
@@ -326,6 +315,20 @@ class RemoteFileSystemAdaptor {
     await this.s3Storage.saveIndex("rfs-test", index);
     this.state.setIndex(index);
   }
+
+  // Implement this function to customize the login prompt.
+  // RemoteFileSystemAdaptor.prototype.displayLoginPrompt = function(syncer) {};
+
+  // Implement this function to handle login requests
+  // login(username, password, callback) {}
+
+  // Implement this function to handle log out requests
+  // logout(callback) {}
+
+  // Implement this function to have more control over the "syncing" logic.
+  // See https://tiddlywiki.com/dev/#SyncAdaptorModules for what this function does.
+  // If this function is implemented, it will be called instead of `getSkinnyTiddlers`.
+  // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 }
 
 // We have to not export this module at all if we can detect that it's the `tiddlywiki` Node.js CLI

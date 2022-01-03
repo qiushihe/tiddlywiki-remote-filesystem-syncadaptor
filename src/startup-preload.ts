@@ -7,7 +7,6 @@ Remote filesystem startup preload function
 
 import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
 import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
-import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 import { SkinnyTiddlersIndex } from "../types/types";
 
@@ -111,31 +110,35 @@ export const startup = async (callback) => {
   const sharedState = SharedState.getDefaultInstance();
 
   const s3Storage = new AwsS3IndexedStorage(() =>
-    Promise.resolve(localStorage.getItem(AWS_S3_CONNECTION_STRING_STORAGE_KEY))
+    Promise.resolve(sharedState.readAwsS3ConnectionString())
   );
 
-  const index = await ensureIndex(s3Storage, {
-    shouldSkipTiddlerTitle: (title) =>
-      sharedState.isTransientTiddlerTitle(title)
-  });
-  if (index) {
-    sharedState.setIndex(index);
+  if (sharedState.hasAwsS3ConnectionString()) {
+    const index = await ensureIndex(s3Storage, {
+      shouldSkipTiddlerTitle: (title) =>
+        sharedState.isTransientTiddlerTitle(title)
+    });
+    if (index) {
+      sharedState.setIndex(index);
+    } else {
+      console.error("!!! Handle missing index!");
+    }
+
+    const preloadTiddlerTitles = index.allDecodedKeys
+      .filter(
+        ({ title, isSkinny }) =>
+          !isSkinny &&
+          sharedState.isPreloadTiddlerTitle(title) &&
+          !sharedState.isTransientTiddlerTitle(title)
+      )
+      .map(({ title }) => title);
+
+    await loadTiddlers(s3Storage, preloadTiddlerTitles);
+
+    await loadDefaultTiddlers(s3Storage);
   } else {
-    console.error("!!! Handle missing index!");
+    console.error("!!! Not preloading on startup: Missing connection string.");
   }
 
-  const preloadTiddlerTitles = index.allDecodedKeys
-    .filter(
-      ({ title, isSkinny }) =>
-        !isSkinny &&
-        sharedState.isPreloadTiddlerTitle(title) &&
-        !sharedState.isTransientTiddlerTitle(title)
-    )
-    .map(({ title }) => title);
-
-  await loadTiddlers(s3Storage, preloadTiddlerTitles);
-
-  await loadDefaultTiddlers(s3Storage);
-
-  setTimeout(() => callback(), 1);
+  callback();
 };

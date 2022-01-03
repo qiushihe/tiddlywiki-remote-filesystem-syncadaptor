@@ -25,7 +25,7 @@ export class AwsS3Storage {
   async getConnectionInfo(): Promise<ConnectionInfo | null> {
     const connectionString = await this.getConnectionString();
 
-    const match = connectionString.match(CONNECTION_STRING_REGEXP);
+    const match = (connectionString || "").match(CONNECTION_STRING_REGEXP);
     if (!match) {
       return null;
     } else {
@@ -47,17 +47,22 @@ export class AwsS3Storage {
   ) {
     const connectionInfo = await this.getConnectionInfo();
 
-    return s3Fetch(
-      connectionInfo.accessKey,
-      connectionInfo.secretKey,
-      connectionInfo.region,
-      connectionInfo.bucket,
-      method,
-      uri,
-      headers,
-      query,
-      payload
-    );
+    if (connectionInfo) {
+      return s3Fetch(
+        connectionInfo.accessKey,
+        connectionInfo.secretKey,
+        connectionInfo.region,
+        connectionInfo.bucket,
+        method,
+        uri,
+        headers,
+        query,
+        payload
+      );
+    } else {
+      console.error("!!! No connection info for s3Fetch.");
+      return null;
+    }
   }
 
   async listAll(continuationToken: string): Promise<[Error, string[]]> {

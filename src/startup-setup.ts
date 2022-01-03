@@ -5,10 +5,8 @@ module-type: startup
 Remote filesystem startup setup function
 \*/
 
-import {
-  AWS_S3_CONNECTION_STRING_STORAGE_KEY,
-  AWS_S3_CONNECTION_STRING_FIELD_ID
-} from "$:/plugins/qiushihe/remote-filesystem/enum.js";
+import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
+import { AWS_S3_CONNECTION_STRING_FIELD_ID } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 
 export const name = "remote-filesystem-setup";
 export const platforms = ["browser"];
@@ -21,44 +19,57 @@ const disableAlwaysFetchSkinnyTiddlers = () => {
   $tw.syncer.alwaysFetchAllSkinnyTiddlers = false;
 };
 
-const handleConnectionStringInputUpdate = (evt: Event) => {
-  localStorage.setItem(
-    AWS_S3_CONNECTION_STRING_STORAGE_KEY,
-    (evt.target as HTMLInputElement).value
-  );
-};
+const setupConnectionStringPersistence = (state: SharedState) => {
+  const handleConnectionStringUpdate = (evt: Event) => {
+    state.writeAwsS3ConnectionString((evt.target as HTMLInputElement).value);
+  };
 
-const setupConnectionStringPersistence = () => {
-  const observer = new MutationObserver((mutationRecords) => {
-    const storedConnectionString = localStorage.getItem(
-      AWS_S3_CONNECTION_STRING_STORAGE_KEY
-    );
-
+  const handleDomMutation = (mutationRecords) => {
     mutationRecords
-      .map((mutationRecord) => {
-        return mutationRecord.target.parentElement.querySelector(
-          `.${AWS_S3_CONNECTION_STRING_FIELD_ID}`
-        );
-      })
+      .map((mutationRecord) =>
+        Array.from(
+          mutationRecord.target.parentElement.querySelectorAll(
+            `.${AWS_S3_CONNECTION_STRING_FIELD_ID}`
+          )
+        )
+      )
+      // Flatten querySelectorAll results.
+      .reduce((acc, inputs) => [].concat(acc).concat(inputs), [])
+      // Remove nil results.
       .filter((input) => !!input)
+      // Remove duplicate results.
       .filter((value, index, arr) => arr.indexOf(value) === index)
+      // Setup initial value and event handlers.
       .forEach((input: HTMLInputElement) => {
-        input.value = storedConnectionString;
+        input.value = state.readAwsS3ConnectionString();
 
-        input.removeEventListener("keyup", handleConnectionStringInputUpdate);
-        input.removeEventListener("change", handleConnectionStringInputUpdate);
-        input.addEventListener("keyup", handleConnectionStringInputUpdate);
-        input.addEventListener("change", handleConnectionStringInputUpdate);
+        input.removeEventListener("keyup", handleConnectionStringUpdate);
+        input.removeEventListener("change", handleConnectionStringUpdate);
+        input.addEventListener("keyup", handleConnectionStringUpdate);
+        input.addEventListener("change", handleConnectionStringUpdate);
       });
-  });
+  };
 
-  observer.observe(document.querySelector(".tc-body"), {
-    childList: true,
-    subtree: true
-  });
+  new MutationObserver(handleDomMutation).observe(
+    document.querySelector("body"),
+    {
+      childList: true,
+      subtree: true
+    }
+  );
+
+  handleDomMutation([
+    {
+      target: {
+        parentElement: document.querySelector("body")
+      }
+    }
+  ]);
 };
 
 export const startup = () => {
+  const sharedState = SharedState.getDefaultInstance();
+
   disableAlwaysFetchSkinnyTiddlers();
-  setupConnectionStringPersistence();
+  setupConnectionStringPersistence(sharedState);
 };

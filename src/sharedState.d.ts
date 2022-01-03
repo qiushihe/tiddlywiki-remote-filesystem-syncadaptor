@@ -7,6 +7,10 @@ declare module "$:/plugins/qiushihe/remote-filesystem/sharedState.js" {
     isTransientTiddlerTitle(title: string): boolean;
     isPreloadTiddlerTitle(title: string): boolean;
 
+    readAwsS3ConnectionString(): string;
+    writeAwsS3ConnectionString(connectionString: string): void;
+    hasAwsS3ConnectionString(): boolean;
+
     getIndex(): SkinnyTiddlersIndex;
     setIndex(index: SkinnyTiddlersIndex): void;
   }
