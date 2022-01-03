@@ -13,10 +13,6 @@ import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 import { Wiki, Logger, TiddlerFields } from "../types/tiddlywiki";
 import { AdaptorInfo, SkinnyTiddlersIndex, TiddlerInfo } from "../types/types";
 
-const TIDDLER_PENDING_REVISIONS = {};
-const pendingRevisionLocks = {};
-const pendingRevisionLockResolves = {};
-
 const getNewRevision = (date: Date) => {
   return [
     `${date.getUTCFullYear()}`.padStart(4, "0"),
@@ -27,35 +23,6 @@ const getNewRevision = (date: Date) => {
     `${date.getUTCSeconds()}`.padStart(2, "0"),
     `${date.getUTCMilliseconds()}`.padStart(4, "0")
   ].join("");
-};
-
-const getPendingRevisionLock = (title): Promise<void> => {
-  if (!pendingRevisionLocks[title]) {
-    pendingRevisionLocks[title] = new Promise((resolve) => {
-      pendingRevisionLockResolves[title] = resolve;
-    });
-  }
-  return pendingRevisionLocks[title];
-};
-
-const resolvePendingRevisionLock = (title): void => {
-  if (pendingRevisionLocks[title]) {
-    const resolve = pendingRevisionLockResolves[title];
-
-    if (resolve) {
-      setTimeout(() => resolve(), 1);
-    }
-  }
-};
-
-const clearPendingRevisionLock = (title): void => {
-  if (pendingRevisionLocks[title]) {
-    pendingRevisionLocks[title] = null;
-  }
-
-  if (pendingRevisionLockResolves[title]) {
-    pendingRevisionLockResolves[title] = null;
-  }
 };
 
 const deleteSkinnyTiddlerIndex = (
@@ -124,19 +91,6 @@ class RemoteFileSystemAdaptor {
     // This prevents previous loaded full tiddlers to be loaded again. This does not prevent the
     // skinny tiddlers list to be loaded multiple times.
     this.supportsLazyLoading = true;
-
-    // Hook into the `change` event of `wiki` to generate new revision value for modified tiddlers.
-    this.wiki.addEventListener("change", (changes) => {
-      Object.keys(changes).forEach((title) => {
-        if (changes[title].modified) {
-          // Not waiting for the `then` on purpose to ensure the revision lock promise is in place.
-          getPendingRevisionLock(title).then();
-
-          TIDDLER_PENDING_REVISIONS[title] = getNewRevision(new Date());
-          setTimeout(() => resolvePendingRevisionLock(title), 1);
-        }
-      });
-    });
 
     this.s3Storage = new AwsS3IndexedStorage(() =>
       Promise.resolve(
@@ -282,38 +236,33 @@ class RemoteFileSystemAdaptor {
     // unintended purposes.
     delete tiddlerFields["revision"];
 
-    await getPendingRevisionLock(tiddlerFields.title);
-    const pendingRevision = TIDDLER_PENDING_REVISIONS[tiddlerFields.title];
+    const newRevision = getNewRevision(new Date());
 
     // Only actually persist the tiddler if it's not a transient tiddler.
     if (!this.state.isTransientTiddlerTitle(tiddlerFields.title)) {
       await this.s3Storage.saveTiddler(
         __rfsNamespace,
         tiddlerFields,
-        pendingRevision
+        newRevision
       );
       this.logger.log("Saved tiddler:", tiddlerFields.title);
     } else {
       this.logger.log("Skipped saving transient tiddler:", tiddlerFields.title);
     }
 
-    // Clear the pending revision lock and value;
-    clearPendingRevisionLock(tiddler.getFieldString("title"));
-    delete TIDDLER_PENDING_REVISIONS[tiddlerFields.title];
-
     const updatedIndex = updateSkinnyTiddlerIndex(
       this.state.getIndex(),
       tiddlerFields,
-      pendingRevision
+      newRevision
     );
     await this.saveIndex(updatedIndex);
     this.logger.log("Updated tiddler index:", tiddlerFields.title);
 
     // Update locally stored tiddler revision
-    this.tiddlerRevision[tiddlerFields.title] = pendingRevision;
+    this.tiddlerRevision[tiddlerFields.title] = newRevision;
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
-    setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
+    setTimeout(() => callback(null, adaptorInfo, newRevision), 1);
   }
 
   async deleteTiddler(title, callback, options: { tiddlerInfo: TiddlerInfo }) {
