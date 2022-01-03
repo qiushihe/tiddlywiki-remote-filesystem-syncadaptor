@@ -59,13 +59,31 @@ export class AwsS3IndexedStorage extends AwsS3Storage {
     );
 
     try {
-      const index = JSON.parse(data);
+      const index = JSON.parse(data) as SkinnyTiddlersIndex;
 
-      try {
-        index.rebuiltAt = new Date(index.rebuiltAt);
-      } catch {
-        index.rebuiltAt = null;
-      }
+      const rebuiltAtTime = Date.parse(index.rebuiltAt as unknown as string);
+      index.rebuiltAt = isNaN(rebuiltAtTime) ? null : new Date(rebuiltAtTime);
+
+      index.indexedSkinnyTiddlers = index.indexedSkinnyTiddlers.map(
+        ({ fields, revision }) => {
+          const updatedField = Object.assign({}, fields);
+
+          const createdTime = Date.parse(fields.created as string);
+          updatedField.created = isNaN(createdTime)
+            ? undefined
+            : new Date(createdTime);
+
+          const modifiedTime = Date.parse(fields.modified as string);
+          updatedField.modified = isNaN(modifiedTime)
+            ? undefined
+            : new Date(modifiedTime);
+
+          return {
+            fields: updatedField,
+            revision: revision
+          };
+        }
+      );
 
       return [null, index];
     } catch (err) {

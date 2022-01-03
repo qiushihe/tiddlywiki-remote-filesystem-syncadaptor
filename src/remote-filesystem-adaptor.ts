@@ -78,11 +78,21 @@ const updateSkinnyTiddlerIndex = (
     isSkinny: false
   });
 
-  _index.indexedSkinnyTiddlers.push({
-    revision: revision,
+  const updatedFields = Object.assign({}, fields, { text: undefined });
 
-    // Clear out the `text` field to store the "skinny" version of the tiddler.
-    fields: Object.assign({}, fields, { text: undefined })
+  // Clear out the `text` field to store the "skinny" version of the tiddler.
+  delete updatedFields["text"];
+
+  // Also delete nil keys.
+  Object.keys(updatedFields).forEach((key) => {
+    if (updatedFields[key] === null || updatedFields[key] === undefined) {
+      delete updatedFields[key];
+    }
+  });
+
+  _index.indexedSkinnyTiddlers.push({
+    fields: updatedFields,
+    revision: revision
   });
 
   return _index;

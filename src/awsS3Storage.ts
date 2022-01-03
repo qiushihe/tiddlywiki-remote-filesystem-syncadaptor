@@ -134,7 +134,20 @@ export class AwsS3Storage {
 
     try {
       const { fields, revision } = JSON.parse(data);
-      return [null, fields, revision];
+
+      const updatedField = Object.assign({}, fields);
+
+      const createdTime = Date.parse(fields.created as string);
+      updatedField.created = isNaN(createdTime)
+        ? undefined
+        : new Date(createdTime);
+
+      const modifiedTime = Date.parse(fields.modified as string);
+      updatedField.modified = isNaN(modifiedTime)
+        ? undefined
+        : new Date(modifiedTime);
+
+      return [null, updatedField, revision];
     } catch (err) {
       return [err, null, null];
     }
