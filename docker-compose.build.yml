@@ -4,4 +4,4 @@ services:
     build: "./docker/tiddlywiki"
     volumes:
       - ./build:/tiddlywiki-remote-filesystem-syncadaptor
-      - ./wiki:/tiddlywiki-html
+      - ./docs:/tiddlywiki-html
