@@ -2,7 +2,7 @@
 title: $:/plugins/qiushihe/remote-filesystem/base62.js
 type: application/javascript
 module-type: library
-Remote filesystem base62 utility functions
+Encode/Decode strings to Base62 strings. Useful to convert any string to an encoded string that only contains letters and numbers.
 \*/
 
 // Based on: https://github.com/felipecarrillo100/base62str

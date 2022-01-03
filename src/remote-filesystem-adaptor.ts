@@ -112,6 +112,7 @@ class RemoteFileSystemAdaptor {
   supportsLazyLoading: boolean;
   s3Storage: AwsS3IndexedStorage;
   state: SharedState;
+  tiddlerRevision: Record<string, string>;
 
   constructor(options) {
     this.wiki = options.wiki;
@@ -144,6 +145,8 @@ class RemoteFileSystemAdaptor {
     );
 
     this.state = SharedState.getDefaultInstance();
+
+    this.tiddlerRevision = {};
   }
 
   // Accept an external logger (in this case it's the own logger of the `syncer` module).
@@ -204,6 +207,12 @@ class RemoteFileSystemAdaptor {
       console.error("!!! Handle this error", indexErr);
     }
 
+    // Replace locally stored tiddler revisions with values from the index.
+    this.tiddlerRevision = {};
+    index.indexedSkinnyTiddlers.forEach(({ revision, fields }) => {
+      this.tiddlerRevision[fields.title] = revision;
+    });
+
     setTimeout(
       () =>
         callback(
@@ -212,6 +221,9 @@ class RemoteFileSystemAdaptor {
             Object.assign({}, fields, {
               // The `revision` value has to be merged with `fields` here due to how this part of
               // the `syncer` module works.
+              // In all other parts of the `syncer` module's operation, the `getTiddlerRevision`
+              // function is used to extract tiddler revision from a locally stored index inside
+              // this `syncadaptor` module.
               revision: revision
             })
           )
@@ -221,17 +233,13 @@ class RemoteFileSystemAdaptor {
   }
 
   // Extract the metadata relevant to this specific sync adapter.
-  // This metadata is sometimes referred to as `adaptorInfo`.
   getTiddlerInfo(/* tiddler */): AdaptorInfo {
     return { __rfsNamespace: "rfs-test" };
   }
 
   // Extract the revision information for a tiddler with the given title.
   getTiddlerRevision(title) {
-    // TODO: Refactor this to store revision info separately from the tiddler itself.
-
-    // The following is the default/built-in behaviour.
-    return this.wiki.getTiddler(title).fields.revision;
+    return this.tiddlerRevision[title];
   }
 
   async loadTiddler(title, callback) {
@@ -246,14 +254,10 @@ class RemoteFileSystemAdaptor {
     } else {
       this.logger.log("Loaded tiddler:", title);
 
-      callback(
-        null,
-        // TODO: Refactor this to not merge revision into fields because this part of the `syncer`
-        //       module relies on the `getTiddlerRevision` function to get revision value.
-        Object.assign({}, fields, {
-          revision: revision
-        })
-      );
+      // Update locally stored tiddler revision
+      this.tiddlerRevision[title] = revision;
+
+      callback(null, fields);
     }
   }
 
@@ -303,11 +307,10 @@ class RemoteFileSystemAdaptor {
       pendingRevision
     );
     await this.saveIndex(updatedIndex);
-    this.logger.log(
-      "Updated tiddler index:",
-      tiddlerFields.title,
-      updatedIndex
-    );
+    this.logger.log("Updated tiddler index:", tiddlerFields.title);
+
+    // Update locally stored tiddler revision
+    this.tiddlerRevision[tiddlerFields.title] = pendingRevision;
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
     setTimeout(() => callback(null, adaptorInfo, pendingRevision), 1);
@@ -327,7 +330,10 @@ class RemoteFileSystemAdaptor {
 
     const updatedIndex = deleteSkinnyTiddlerIndex(this.state.getIndex(), title);
     await this.saveIndex(updatedIndex);
-    this.logger.log("Deleted tiddler index:", title, updatedIndex);
+    this.logger.log("Deleted tiddler index:", title);
+
+    // Delete locally stored tiddler revision
+    delete this.tiddlerRevision[title];
 
     callback(null);
   }
