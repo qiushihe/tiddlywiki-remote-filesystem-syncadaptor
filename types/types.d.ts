@@ -1,4 +1,5 @@
 export type ConnectionInfo = {
+  username: string;
   accessKey: string;
   secretKey: string;
   region: string;

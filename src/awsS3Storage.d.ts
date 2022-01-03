@@ -1,4 +1,10 @@
+import { ConnectionInfo } from "../types/types";
+
 declare module "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js" {
+  export const decodeConnectionString: (
+    connectionString: string
+  ) => ConnectionInfo;
+
   export class AwsS3Storage {
     constructor(getConnectionString: () => Promise<string>);
 

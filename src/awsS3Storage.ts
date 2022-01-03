@@ -10,10 +10,30 @@ import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
 
 import { ConnectionInfo } from "../types/types";
 
-// Connection string format: aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com
+// Connection string format: aws://[USERNAME]:[KEYS]@[BUCKET].s3.[REGION].amazonaws.com
+// ... where `KEYS` is the Base64 encoded string of: [ACCESS KEY]:[SECRET KEY]
 const CONNECTION_STRING_REGEXP = new RegExp(
   "^aws://([^:]+):([^@]+)@([^.]+).s3.([^.]+).amazonaws.com$"
 );
+
+export const decodeConnectionString = (
+  connectionString: string
+): ConnectionInfo => {
+  const match = (connectionString || "").match(CONNECTION_STRING_REGEXP);
+  if (!match) {
+    return null;
+  } else {
+    const [accessKey, secretKey] = atob(match[2]).split(":", 2);
+
+    return {
+      username: match[1],
+      accessKey: accessKey,
+      secretKey: secretKey,
+      region: match[4],
+      bucket: match[3]
+    };
+  }
+};
 
 export class AwsS3Storage {
   getConnectionString: () => Promise<string>;
@@ -24,18 +44,7 @@ export class AwsS3Storage {
 
   async getConnectionInfo(): Promise<ConnectionInfo | null> {
     const connectionString = await this.getConnectionString();
-
-    const match = (connectionString || "").match(CONNECTION_STRING_REGEXP);
-    if (!match) {
-      return null;
-    } else {
-      return {
-        accessKey: match[1],
-        secretKey: match[2],
-        region: match[4],
-        bucket: match[3]
-      };
-    }
+    return decodeConnectionString(connectionString);
   }
 
   async s3Fetch(

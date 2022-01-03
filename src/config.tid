@@ -10,9 +10,11 @@ In order for the Remote Filesystem plugin to authenticate with AWS S3, enter the
   class="rfs-field rfs-full-width-field rfs-monospace-field rfs-aws-s3-connection-string-field-531abfc5-c626-4ac8-ad64-cec6d4c1f998"
   type="password"
   default=""
-  placeholder="aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com"
+  placeholder="aws://[USERNAME]:[KEYS]@[BUCKET].s3.[REGION].amazonaws.com"
 />
 
 The connection string should be in the format of:
 
-`aws://[KEY]:[SECRET]@[BUCKET].s3.[REGION].amazonaws.com`
+`aws://[USERNAME]:[KEYS]@[BUCKET].s3.[REGION].amazonaws.com`
+
+... where `KEYS` is the Base64 encoded string of: `[ACCESS KEY]:[SECRET KEY]`.

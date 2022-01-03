@@ -5,6 +5,7 @@ module-type: syncadaptor
 A sync adaptor module for synchronising with a remote filesystem
 \*/
 
+import { decodeConnectionString } from "$:/plugins/qiushihe/remote-filesystem/awsS3Storage.js";
 import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3IndexedStorage.js";
 import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
 import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
@@ -77,7 +78,12 @@ const updateSkinnyTiddlerIndex = (
     isSkinny: false
   });
 
-  _index.indexedSkinnyTiddlers.push({ fields: fields, revision: revision });
+  _index.indexedSkinnyTiddlers.push({
+    revision: revision,
+
+    // Clear out the `text` field to store the "skinny" version of the tiddler.
+    fields: Object.assign({}, fields, { text: undefined })
+  });
 
   return _index;
 };
@@ -131,11 +137,20 @@ class RemoteFileSystemAdaptor {
   }
 
   // This function returns status information for this module
+  // The parameters for `callback` are: (error, is logged in, username, is readonly, is anonymous)
   getStatus(callback) {
-    if (callback) {
-      // error, is logged in, username, is readonly, is anonymous
-      // callback(null, true, "test-username", true, false);
-      callback(null, false, null, false, false);
+    if (this.state.hasAwsS3ConnectionString()) {
+      const { username } = decodeConnectionString(
+        this.state.readAwsS3ConnectionString()
+      );
+
+      if (callback) {
+        callback(null, true, username, false, false);
+      }
+    } else {
+      if (callback) {
+        callback(null, false, null, false, false);
+      }
     }
   }
 
@@ -210,6 +225,8 @@ class RemoteFileSystemAdaptor {
 
   async loadTiddler(title, callback) {
     const doneApiLock = await this.getApiLock();
+
+    this.logger.log("Loading tiddler:", title);
 
     const [err, fields, revision] = await this.s3Storage.loadTiddler(
       "rfs-test",
