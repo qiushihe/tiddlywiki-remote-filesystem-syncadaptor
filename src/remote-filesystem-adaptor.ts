@@ -9,6 +9,7 @@ import { AwsS3IndexedStorage } from "$:/plugins/qiushihe/remote-filesystem/awsS3
 import { SharedState } from "$:/plugins/qiushihe/remote-filesystem/sharedState.js";
 import { AWS_S3_CONNECTION_STRING_STORAGE_KEY } from "$:/plugins/qiushihe/remote-filesystem/enum.js";
 import { encode } from "$:/plugins/qiushihe/remote-filesystem/base62.js";
+import { AsyncLock } from "$:/plugins/qiushihe/remote-filesystem/async-lock.js";
 
 import { Wiki, Logger, TiddlerFields } from "../types/tiddlywiki";
 import { AdaptorInfo, SkinnyTiddlersIndex, TiddlerInfo } from "../types/types";
@@ -80,6 +81,7 @@ class RemoteFileSystemAdaptor {
   s3Storage: AwsS3IndexedStorage;
   state: SharedState;
   tiddlerRevision: Record<string, string>;
+  lock: AsyncLock;
 
   constructor(options) {
     this.wiki = options.wiki;
@@ -101,6 +103,8 @@ class RemoteFileSystemAdaptor {
     this.state = SharedState.getDefaultInstance();
 
     this.tiddlerRevision = {};
+
+    this.lock = new AsyncLock();
   }
 
   // Accept an external logger (in this case it's the own logger of the `syncer` module).
@@ -153,7 +157,28 @@ class RemoteFileSystemAdaptor {
   // If this function is implemented, it will be called instead of `getSkinnyTiddlers`.
   // RemoteFileSystemAdaptor.prototype.getUpdatedTiddlers = function(syncer, callback) {};
 
+  async getApiLock(): Promise<(err: Error, ret: any) => void> {
+    let resolvePromise;
+    const promise: Promise<(err: Error, ret: any) => void> = new Promise(
+      (resolve) => {
+        resolvePromise = resolve;
+      }
+    );
+
+    this.lock
+      .acquire("api", (done) => {
+        resolvePromise(done);
+      })
+      // Ignore this promise chain because we only care about resolving the promise after getting
+      // the lock, but we don't want to block the returning of the promise before getting the lock.
+      .then();
+
+    return promise;
+  }
+
   async getSkinnyTiddlers(callback) {
+    const doneApiLock = await this.getApiLock();
+
     const [indexErr, index] = await this.s3Storage.loadIndex("rfs-test");
     if (!indexErr) {
       this.state.setIndex(index);
@@ -167,23 +192,21 @@ class RemoteFileSystemAdaptor {
       this.tiddlerRevision[fields.title] = revision;
     });
 
-    setTimeout(
-      () =>
-        callback(
-          null,
-          index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
-            Object.assign({}, fields, {
-              // The `revision` value has to be merged with `fields` here due to how this part of
-              // the `syncer` module works.
-              // In all other parts of the `syncer` module's operation, the `getTiddlerRevision`
-              // function is used to extract tiddler revision from a locally stored index inside
-              // this `syncadaptor` module.
-              revision: revision
-            })
-          )
-        ),
-      1
+    callback(
+      null,
+      index.indexedSkinnyTiddlers.map(({ revision, fields }) =>
+        Object.assign({}, fields, {
+          // The `revision` value has to be merged with `fields` here due to how this part of
+          // the `syncer` module works.
+          // In all other parts of the `syncer` module's operation, the `getTiddlerRevision`
+          // function is used to extract tiddler revision from a locally stored index inside
+          // this `syncadaptor` module.
+          revision: revision
+        })
+      )
     );
+
+    doneApiLock(null, null);
   }
 
   // Extract the metadata relevant to this specific sync adapter.
@@ -197,6 +220,8 @@ class RemoteFileSystemAdaptor {
   }
 
   async loadTiddler(title, callback) {
+    const doneApiLock = await this.getApiLock();
+
     const [err, fields, revision] = await this.s3Storage.loadTiddler(
       "rfs-test",
       title
@@ -213,9 +238,13 @@ class RemoteFileSystemAdaptor {
 
       callback(null, fields);
     }
+
+    doneApiLock(null, null);
   }
 
   async saveTiddler(tiddler, callback, options: { tiddlerInfo: TiddlerInfo }) {
+    const doneApiLock = await this.getApiLock();
+
     this.logger.log("Saving tiddler:", tiddler.fields.title);
 
     const {
@@ -262,10 +291,14 @@ class RemoteFileSystemAdaptor {
     this.tiddlerRevision[tiddlerFields.title] = newRevision;
 
     adaptorInfo.__rfsNamespace = __rfsNamespace || "rfs-test";
-    setTimeout(() => callback(null, adaptorInfo, newRevision), 1);
+    callback(null, adaptorInfo, newRevision);
+
+    doneApiLock(null, null);
   }
 
   async deleteTiddler(title, callback, options: { tiddlerInfo: TiddlerInfo }) {
+    const doneApiLock = await this.getApiLock();
+
     this.logger.log("Deleting tiddler:", title);
 
     const {
@@ -285,6 +318,8 @@ class RemoteFileSystemAdaptor {
     delete this.tiddlerRevision[title];
 
     callback(null);
+
+    doneApiLock(null, null);
   }
 
   async saveIndex(index: SkinnyTiddlersIndex) {
